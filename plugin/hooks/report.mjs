@@ -34,7 +34,7 @@ export const PLUGIN_ID = "agent-loop@agent-loop";
 export const PROTOCOL_VERSION = 2;
 /** 插件自己的版本，每次上报放在请求头 x-agent-loop-plugin 里，页面据此提示更新。
  *  和 plugin.json 的 version、shared/src/version.ts 的 PLUGIN_VERSION 一致（测试检查） */
-export const PLUGIN_VERSION = "0.2.14";
+export const PLUGIN_VERSION = "0.2.15";
 /** 第一个由插件建群（/agent-loop:create）的版本：从这一版起页面认 #galaxy=、&created。插件和私有部署分开升级，
  *  所以打开页面前先问服务器的版本（/healthz 的 version），旧的服务器给 #g=，也不在那里建群。
  *  和 shared/src/version.ts 的 CREATE_SINCE 一致（测试检查） */

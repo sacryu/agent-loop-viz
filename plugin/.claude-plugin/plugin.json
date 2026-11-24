@@ -1,6 +1,6 @@
 {
   "name": "agent-loop",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Draw your Claude Code sessions as planetary systems: each step, what it touched, how long it took. Runs locally by default; share with friends through an end-to-end encrypted galaxy group.",
   "license": "MIT",
   "keywords": [
