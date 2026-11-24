@@ -1,0 +1,28 @@
+# 一键部署：在服务器上
+#   cp deploy/.env.example deploy/.env   # 填 DOMAIN 和 GROUPS（GROUPS 由 npx agent-loop invite https://<域名> 给出）
+#   docker compose -f deploy/compose.yml up -d --build
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    environment:
+      # 白名单：只接受这些星系群（逗号分隔）。空着就是开放模式，任何人都能用邀请链接在你的服务器上建星系群
+      GROUPS: ${GROUPS:-}
+      # 前面是 caddy：按 X-Forwarded-For 里的真实地址限流（不设的话所有人都算成 caddy 一个地址）
+      TRUST_PROXY: "1"
+      MAX_PER_GROUP: ${MAX_PER_GROUP:-50}
+      # 单个大附件（工具完整的输入输出）的上限，设成 0 就不收大附件
+      MAX_FULL_BYTES: ${MAX_FULL_BYTES:-49152}
+    # 不对外暴露端口：只让 caddy 访问
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?在 deploy/.env 里设置 DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [app]
+volumes:
+  caddy-data:

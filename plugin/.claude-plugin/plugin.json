@@ -1,0 +1,33 @@
+{
+  "name": "agent-loop",
+  "version": "0.2.14",
+  "description": "Draw your Claude Code sessions as planetary systems: each step, what it touched, how long it took. Runs locally by default; share with friends through an end-to-end encrypted galaxy group.",
+  "license": "MIT",
+  "keywords": [
+    "visualization",
+    "hooks",
+    "galaxy"
+  ],
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL or invite link",
+      "description": "Where to report. The default is a server on this computer (npx agent-loop). Paste an invite link (https://…/#k=…) to join a galaxy group: everything except anonymous categories and timings is encrypted with the key in the link.",
+      "default": "http://127.0.0.1:4317",
+      "sensitive": true
+    },
+    "share": {
+      "type": "string",
+      "title": "How much to share",
+      "description": "auto: full on this computer, summary elsewhere. anonymous: categories and timings only. summary: plus project, session title, each step's tool and target, first line of errors. full: plus complete prompts, tool input/output and answers.",
+      "options": ["auto", "anonymous", "summary", "full"],
+      "default": "auto"
+    },
+    "name": {
+      "type": "string",
+      "title": "Galaxy name",
+      "description": "The name others in your galaxy group see for you. Leave empty for an auto-generated catalog number.",
+      "default": ""
+    }
+  }
+}

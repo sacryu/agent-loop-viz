@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Loop</title>
+<meta name="description" content="Agent Loop draws Claude Code sessions as planetary systems: every step, what it touched, how long it took">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg:#0B0C0E; --ink:#ECE9E4; --ink2:#9A968F; --ink3:#66625C; --claude:#D97757; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; color:var(--ink);
+    font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  #hud { position:fixed; inset:0; pointer-events:none; }
+
+  /* 放大某个对话时，左侧的名字和总览 */
+  #focus { position:absolute; left:5.2vw; top:50%; width:29vw; transform:translateY(-50%); opacity:0; }
+  #f-proj { font-size:13px; letter-spacing:.14em; color:var(--ink2); text-transform:uppercase; margin-bottom:14px; }
+  #f-title { margin:0 0 34px; font-size:clamp(26px, 3.1vw, 50px); line-height:1.12; font-weight:650; letter-spacing:-.02em;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+  .stats { display:flex; gap:38px; margin-bottom:26px; }
+  .stats b { display:block; font-size:clamp(20px, 1.9vw, 30px); font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  .stats span { display:block; margin-top:4px; font-size:12px; color:var(--ink2); }
+  .fine { display:flex; gap:12px; font-size:12px; line-height:1.9; color:var(--ink3); }
+  .fine span { flex:0 0 4.2em; }
+  .fine code { font-family:inherit; color:var(--ink2); overflow-wrap:anywhere; }
+  .fine code.link { pointer-events:auto; cursor:pointer; border-bottom:1px dotted rgba(236,233,228,.25); }
+  .fine code.link:hover { color:var(--ink); border-bottom-color:rgba(236,233,228,.6); }
+
+  /* 步骤详情：点表盘上的一步，从右边滑出来。内容是点开时才向服务器要的大附件 */
+  #detail { position:fixed; top:0; right:0; bottom:0; width:min(600px, 46vw); box-sizing:border-box; padding:22px 26px 30px;
+    background:rgba(17,18,21,.95); border-left:1px solid rgba(236,233,228,.09); box-shadow:-20px 0 50px rgba(0,0,0,.45);
+    backdrop-filter:blur(14px); overflow:auto; transform:translateX(102%); transition:transform .22s cubic-bezier(.3,0,.2,1); }
+  #detail.open { transform:none; }
+  #detail header { display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+  #detail header div { flex:1; min-width:0; }
+  #d-kicker { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:6px; }
+  #d-title { margin:0; font-size:18px; font-weight:600; line-height:1.3; overflow-wrap:anywhere; }
+  #d-close { flex:none; cursor:pointer; font:inherit; font-size:18px; line-height:1; padding:4px 9px; color:var(--ink3); background:none;
+    border:1px solid rgba(236,233,228,.12); border-radius:6px; }
+  #d-close:hover { color:var(--ink); border-color:rgba(236,233,228,.3); }
+  #d-meta { font-size:12px; color:var(--ink3); margin-bottom:18px; }
+  #d-meta .err { color:#F2545B; }
+  #detail h3 { margin:20px 0 8px; font-size:11px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); }
+  #detail .kv { font-size:12.5px; color:var(--ink2); margin:3px 0; overflow-wrap:anywhere; }
+  #detail .kv b { font-weight:500; color:var(--ink3); margin-right:8px; }
+  #detail pre { margin:6px 0; padding:10px 12px; max-height:52vh; overflow:auto; font:12px/1.5 "Cascadia Mono",Consolas,"Microsoft YaHei UI",monospace;
+    white-space:pre-wrap; word-break:break-word; color:#cfd3d9; background:rgba(0,0,0,.28); border:1px solid rgba(236,233,228,.06); border-radius:7px; }
+  #detail pre.err { color:#ffb3b5; border-color:rgba(242,84,91,.3); }
+  #detail pre .del { color:#ff9b9f; background:rgba(242,84,91,.09); display:block; }
+  #detail pre .add { color:#9be3b5; background:rgba(79,209,139,.08); display:block; }
+  #detail .muted { font-size:12.5px; color:var(--ink3); }
+
+  /* 邀请、加入、创建星系群 */
+  .pill { pointer-events:auto; cursor:pointer; padding:3px 10px; font:inherit; font-size:11px; letter-spacing:.08em; color:var(--ink2);
+    background:none; border:1px solid rgba(236,233,228,.14); border-radius:6px; transition:color .15s, border-color .15s; }
+  .pill:hover { color:var(--ink); border-color:rgba(236,233,228,.35); }
+  #insecure { font-size:11px; letter-spacing:.06em; color:#e0a35a; }
+  #panel { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(560px, 90vw); box-sizing:border-box; padding:24px 26px;
+    background:rgba(20,21,24,.96); border:1px solid rgba(236,233,228,.1); border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.55);
+    pointer-events:auto; display:none; }
+  #panel.open { display:block; }
+  /* 「这是你的星系」：贴在底下，不挡住刚飞进去的星系 */
+  #panel.dock { top:auto; bottom:28px; transform:translateX(-50%); }
+  #panel h2 { margin:0 0 8px; font-size:18px; font-weight:600; }
+  #panel p { margin:8px 0; font-size:13px; line-height:1.6; color:var(--ink2); }
+  #panel pre { margin:8px 0; padding:10px 12px; font:12px/1.55 "Cascadia Mono",Consolas,monospace; white-space:pre-wrap; word-break:break-all;
+    color:#cfd3d9; background:rgba(0,0,0,.3); border:1px solid rgba(236,233,228,.07); border-radius:7px; user-select:all; }
+  #panel .row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  #panel input { flex:1; min-width:200px; padding:6px 10px; font:inherit; font-size:13px; color:var(--ink); background:rgba(0,0,0,.3);
+    border:1px solid rgba(236,233,228,.14); border-radius:6px; }
+  #panel .warn { color:#e0a35a; }
+  #panel .fine { display:block; font-size:12px; color:var(--ink3); }
+  /* 邀请、刚加入、建好群的卡片：右上角 ×，指纹一行小字，一张要发出去的消息，底下一个主按钮 */
+  #panel .x { position:absolute; top:14px; right:14px; width:28px; height:28px; padding:0; cursor:pointer; font:inherit; font-size:18px; line-height:1;
+    color:var(--ink3); background:none; border:none; border-radius:6px; }
+  #panel .x:hover { color:var(--ink); background:rgba(236,233,228,.06); }
+  #panel .kicker { margin-bottom:6px; font-size:11px; letter-spacing:.14em; color:var(--ink3); cursor:help; }
+  #panel .kicker .fp { font:11px "Cascadia Mono",Consolas,monospace; letter-spacing:.04em; color:var(--ink2); }
+  #panel .msg { margin:16px 0 0; padding:16px 18px; font-size:12.5px; line-height:1.6; color:var(--ink2);
+    background:rgba(255,255,255,.025); border:1px solid rgba(236,233,228,.08); border-radius:10px; }
+  #panel .msg .step { display:flex; gap:8px; align-items:baseline; margin-top:14px; }
+  #panel .msg .step:first-child { margin-top:0; }
+  #panel .msg .n { flex:none; color:var(--claude); }
+  #panel .msg .url, #panel .msg .prompt { margin:6px 0 0 20px; }
+  #panel .url, #panel .prompt .cmd { font:11.5px/1.6 "Cascadia Mono",Consolas,monospace; color:#cfd3d9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #panel .url { padding:7px 10px; background:rgba(0,0,0,.3); border-radius:6px; }
+  #panel .prompt { max-height:200px; overflow-y:auto; padding:9px 12px; font-size:12px; line-height:1.6; color:var(--ink2); background:rgba(0,0,0,.3);
+    border-radius:6px; scrollbar-width:thin; scrollbar-color:rgba(236,233,228,.18) transparent; }
+  #panel .prompt .say { white-space:pre-wrap; }
+  #panel .prompt .gap { height:6px; font-size:0; }
+  #panel .prompt .cmd { padding-left:12px; }
+  #panel .prompt .say + .cmd { margin-top:4px; }
+  #panel .prompt.solo { max-height:min(320px, 42vh); margin:12px 0; padding:12px 14px; font-size:12.5px; border:1px solid rgba(236,233,228,.07); }
+  #panel .foot { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:18px; }
+  #panel .foot .btns { display:flex; gap:8px; }
+  #panel .foot .btns .pill { padding:7px 16px; font-size:13px; }
+  #panel .pill.primary, #panel .foot .btns .pill.primary { padding:7px 20px; font-size:13px; font-weight:600; letter-spacing:.02em; color:#1b120d; background:var(--claude); border-color:var(--claude); }
+  #panel .pill.primary:hover { background:#e48a6c; border-color:#e48a6c; color:#1b120d; }
+  #panel .textbtn { padding:0; cursor:pointer; font:inherit; font-size:12px; color:var(--ink3); background:none; border:none; }
+  #panel .textbtn:hover { color:var(--ink2); text-decoration:underline; text-underline-offset:3px; }
+  /* 演示站：固定的一条提示 */
+  #demo-bar { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); display:none; align-items:center; gap:14px; white-space:nowrap;
+    font-size:12px; letter-spacing:.04em; color:var(--ink2); padding:7px 14px; background:rgba(20,21,24,.8); border:1px solid rgba(236,233,228,.1);
+    border-radius:999px; pointer-events:auto; }
+  #demo-bar a { color:var(--claude); text-decoration:none; }
+  /* 插件旧了：底部一条提示，带更新命令（update.ts） */
+  #update { position:absolute; left:50%; bottom:52px; transform:translateX(-50%); width:min(560px, 86vw); box-sizing:border-box; display:none;
+    padding:12px 40px 12px 16px; background:rgba(20,21,24,.88); border:1px solid rgba(224,163,90,.35); border-radius:10px;
+    box-shadow:0 14px 40px rgba(0,0,0,.45); backdrop-filter:blur(12px); pointer-events:auto; }
+  #update p { margin:0 0 8px; font-size:12.5px; line-height:1.6; color:var(--ink2); }
+  #update pre { margin:0; padding:8px 10px; font:12px/1.6 "Cascadia Mono",Consolas,monospace; white-space:pre-wrap; word-break:break-all;
+    color:#cfd3d9; background:rgba(0,0,0,.3); border:1px solid rgba(236,233,228,.07); border-radius:6px; user-select:all; }
+  #update button { position:absolute; right:8px; top:8px; cursor:pointer; font:inherit; font-size:15px; line-height:1; padding:3px 7px;
+    color:var(--ink3); background:none; border:none; }
+  #update button:hover { color:var(--ink); }
+  #demo-bar a:hover { text-decoration:underline; }
+
+  /* 鼠标指着一个星系或一个球时的卡片 */
+  #card { position:absolute; left:0; top:0; min-width:210px; max-width:320px; padding:13px 16px 12px; opacity:0;
+    background:rgba(24,25,28,.82); border:1px solid rgba(236,233,228,.09); border-radius:10px;
+    box-shadow:0 14px 40px rgba(0,0,0,.5); backdrop-filter:blur(12px); transition:opacity .14s ease; }
+  #c-proj { display:flex; align-items:center; gap:7px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink2); }
+  #c-proj::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--ink3); }
+  #card[data-status=working] #c-proj::before { background:var(--claude); box-shadow:0 0 8px var(--claude); }
+  #card[data-status=waiting] #c-proj::before { background:var(--ink); }
+  #card[data-status=error] #c-proj::before { background:#F2545B; }
+  #c-title { margin:5px 0 10px; padding-bottom:10px; border-bottom:1px solid rgba(236,233,228,.08);
+    font-size:15px; font-weight:600; line-height:1.3; }
+  .c-row { display:flex; gap:14px; font-size:12px; line-height:1.85; color:var(--ink2); }
+  .c-row span { flex:0 0 2.6em; color:var(--ink3); }
+  .c-row b { font-weight:400; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+
+  #caption { position:absolute; left:28px; bottom:22px; font-size:12px; letter-spacing:.06em; color:var(--ink3); }
+  #hint { position:absolute; right:28px; bottom:22px; font-size:12px; letter-spacing:.06em; color:var(--ink3); opacity:0; }
+  #top { position:absolute; right:28px; top:16px; display:flex; align-items:center; gap:16px; }
+  #mode { font-size:11px; letter-spacing:.14em; color:var(--ink3); }
+  /* 语言切换：写的是另一种语言 */
+  #lang { pointer-events:auto; cursor:pointer; padding:3px 8px; font:inherit; font-size:11px; letter-spacing:.08em;
+    color:var(--ink3); background:none; border:1px solid rgba(236,233,228,.12); border-radius:6px; transition:color .15s, border-color .15s; }
+  #lang:hover { color:var(--ink); border-color:rgba(236,233,228,.3); }
+  /* 「我的星系」：镜头飞到你的星系。按钮上的小圈就是画面里你星系外那圈标记 */
+  #mine { pointer-events:auto; cursor:pointer; display:flex; align-items:center; gap:7px; padding:3px 10px 3px 7px; font:inherit;
+    font-size:11px; letter-spacing:.08em; color:var(--ink2); background:none; border:1px solid rgba(217,119,87,.35); border-radius:6px;
+    transition:color .15s, border-color .3s, box-shadow .15s, transform .12s; }
+  #mine:hover { color:var(--ink); border-color:var(--claude); box-shadow:0 0 12px rgba(217,119,87,.25); }
+  #mine:active, #mine.press { transform:scale(.97); }
+  #mine svg { width:14px; height:14px; overflow:visible; display:block; filter:drop-shadow(0 0 2px rgba(217,119,87,.6)); }
+  #mine .spin, #mine .ring, #mine .sonar { transform-box:fill-box; transform-origin:center; }
+  #mine .ring { fill:var(--claude); fill-opacity:0; stroke:var(--claude); stroke-width:1.5; stroke-dasharray:4.189 0;
+    transition:transform .14s cubic-bezier(.3,0,.2,1), fill-opacity .14s, stroke-dasharray .25s, stroke .3s; }
+  #mine .sonar { fill:none; stroke:var(--claude); stroke-width:1; vector-effect:non-scaling-stroke; opacity:0; }
+  /* 悬停：实线圈变成和画面里一样的虚线圈，慢慢转 */
+  #mine:hover .ring { stroke-dasharray:1.8 2.389; }
+  #mine:hover .spin { animation:mine-spin 6s linear infinite; }
+  /* 按下、飞行中：收紧成发亮的实心点 */
+  #mine:active .ring, #mine.press .ring, #mine.flying .ring { transform:scale(.55); fill-opacity:1; stroke-dasharray:4.189 0; }
+  #mine:active .spin, #mine.press .spin, #mine.flying .spin { animation:none; }
+  #mine.flying svg { animation:mine-glow .8s ease-in-out infinite alternate; }
+  /* 到达：亮一下、荡开一圈（和画面里的密度波同时），慢慢变回空心圈 */
+  #mine.arrive .ring { transition-duration:.6s; }
+  #mine.arrive svg { animation:mine-flare 1.2s ease-out; }
+  #mine.arrive .sonar, #mine.intro .sonar { animation:mine-sonar .9s ease-out; }
+  #mine.intro .sonar { animation-duration:1.2s; }
+  /* 你的星系现在不在宇宙里：圈变灰，扩一圈就散（不是出错，所以不摇晃） */
+  #mine.absent { border-color:rgba(236,233,228,.15); }
+  #mine.absent .ring { stroke:var(--ink3); }
+  #mine.absent .sonar { stroke:var(--ink2); animation:mine-sonar 1s ease-out; }
+  @keyframes mine-spin { to { transform:rotate(360deg); } }
+  @keyframes mine-glow { from { filter:drop-shadow(0 0 2px rgba(217,119,87,.6)); } to { filter:drop-shadow(0 0 5px rgba(217,119,87,1)); } }
+  @keyframes mine-flare { from { filter:drop-shadow(0 0 8px rgba(255,220,200,1)); } to { filter:drop-shadow(0 0 2px rgba(217,119,87,.6)); } }
+  @keyframes mine-sonar { from { opacity:.9; transform:scale(1); } to { opacity:0; transform:scale(2.6); } }
+  @media (prefers-reduced-motion: reduce) {
+    #mine, #mine .ring { transition:color .15s, border-color .3s, fill-opacity .14s, stroke .3s; }
+    #mine:active, #mine.press, #mine:active .ring, #mine.press .ring, #mine.flying .ring { transform:none; }
+    #mine .spin, #mine svg, #mine .sonar { animation:none !important; }
+  }
+  #note { position:absolute; left:50%; top:56px; transform:translateX(-50%); white-space:nowrap; font-size:12px; letter-spacing:.06em;
+    color:var(--ink2); opacity:0; transition:opacity .3s; }
+  html:lang(en) .c-row span { flex-basis:3.6em; }
+  /* 和服务断开时：画面压暗，上方正中一句话 */
+  #conn { position:absolute; left:50%; top:22px; transform:translateX(-50%); display:flex; align-items:center; gap:9px;
+    white-space:nowrap; font-size:13px; letter-spacing:.06em; color:var(--ink); opacity:0; }
+  #conn::before { content:""; width:7px; height:7px; border-radius:50%; border:1.5px solid var(--ink2); box-sizing:border-box; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="focus">
+    <div id="f-proj"></div>
+    <h1 id="f-title"></h1>
+    <div class="stats">
+      <div><b id="f-ctx">—</b><span data-t="ctxTokens"></span></div>
+      <div><b id="f-out">—</b><span data-t="outTokens"></span></div>
+    </div>
+    <div class="fine"><span data-t="status"></span><code id="f-state"></code></div>
+    <div class="fine"><span data-t="galaxy"></span><code id="f-galaxy"></code></div>
+    <div class="fine" id="f-ask-row" style="display:none"><span data-t="asked"></span><code id="f-ask"></code></div>
+    <div class="fine" id="f-ans-row" style="display:none"><span data-t="answer"></span><code id="f-ans"></code></div>
+    <div class="fine" id="f-model-row" style="display:none"><span data-t="model"></span><code id="f-model"></code></div>
+  </div>
+  <div id="card">
+    <div id="c-proj"></div>
+    <div id="c-title"></div>
+    <div class="c-row"><span data-t="status"></span><b id="c-state"></b></div>
+    <div class="c-row"><span data-t="current"></span><b id="c-step"></b></div>
+    <div class="c-row" id="c-subrow" style="display:none"><span data-t="subagents"></span><b id="c-subs"></b></div>
+  </div>
+  <div id="caption"></div>
+  <div id="hint"></div>
+  <div id="top"><span id="insecure" style="display:none"></span><span id="mode"></span><button id="invite" class="pill" type="button" style="display:none"></button><button id="mine" type="button" style="display:none"><svg viewBox="-7 -7 14 14" aria-hidden="true"><circle class="sonar" r="4"/><g class="spin"><circle class="ring" r="4"/></g></svg><span id="mine-t"></span></button><button id="lang" type="button"></button></div>
+  <div id="note"></div>
+  <div id="conn"></div>
+  <div id="update" role="status"></div>
+  <div id="demo-bar"><span id="demo-t"></span><a id="demo-link" href="https://github.com/" target="_blank" rel="noopener"></a></div>
+  <div id="panel"></div>
+</div>
+<aside id="detail" aria-hidden="true">
+  <header><div><div id="d-kicker"></div><h2 id="d-title"></h2></div><button id="d-close" type="button">×</button></header>
+  <div id="d-meta"></div>
+  <div id="d-body"></div>
+</aside>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

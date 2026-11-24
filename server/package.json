@@ -1,0 +1,15 @@
+{
+  "name": "@agent-loop/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node20 --external:bufferutil --external:utf-8-validate --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" --outfile=dist/server.mjs",
+    "dev": "npm run build && node dist/server.mjs"
+  },
+  "dependencies": {
+    "@agent-loop/shared": "*",
+    "ws": "^8.23.0",
+    "zod": "^4.6.7"
+  }
+}

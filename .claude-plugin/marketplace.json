@@ -1,0 +1,13 @@
+{
+  "name": "agent-loop",
+  "owner": {
+    "name": "agent-loop contributors"
+  },
+  "plugins": [
+    {
+      "name": "agent-loop",
+      "source": "./plugin",
+      "description": "Draw your Claude Code sessions as planetary systems, locally or in an encrypted galaxy group with friends."
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "agent-loop",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "node server/dist/server.mjs",
+    "dev": "npm run build -w web && npm run dev -w server",
+    "test": "vitest run",
+    "typecheck": "tsc -p shared && tsc -p plugin && tsc -p server && tsc -p test && tsc -p web",
+    "check": "npm run typecheck && npm test",
+    "live": "node tools/push-live.mjs",
+    "live:watch": "node tools/push-live.mjs --watch",
+    "build:demo": "npm run build:demo -w web",
+    "demo:script": "node tools/demo/build.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}

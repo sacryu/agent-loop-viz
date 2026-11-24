@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 40 40" width="128" height="128">
+<!-- Agent Loop 的标志：一个表盘，就是一次 agent loop。从 12 点起顺时针，一圈一组，射线的长度是这一步的耗时；珊瑚色那根是正在跑的一步 -->
+<circle cx="16" cy="16" r="20" fill="#0B0C0E"/>
+<circle cx="16" cy="16" r="8.2" fill="none" stroke="#ECE9E4" stroke-width="1.2"/>
+<line x1="16.00" y1="6.20" x2="16.00" y2="2.24" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="19.54" y1="6.86" x2="21.88" y2="0.82" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="24.61" y1="11.31" x2="26.82" y2="10.10" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="25.60" y1="17.98" x2="30.89" y2="19.07" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="24.24" y1="21.31" x2="26.05" y2="22.48" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="21.76" y1="23.93" x2="23.88" y2="26.84" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="15.28" y1="25.77" x2="14.77" y2="32.59" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="9.13" y1="22.99" x2="7.12" y2="25.05" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="7.07" y1="20.04" x2="3.01" y2="21.88" stroke="#A8B2C0" stroke-width="1.15" stroke-linecap="round"/>
+<line x1="6.57" y1="13.32" x2="1.73" y2="11.94" stroke="#D97757" stroke-width="1.6" stroke-linecap="round"/><circle cx="1.73" cy="11.94" r="1.5" fill="#FFE0D0"/>
+</svg>

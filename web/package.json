@@ -1,0 +1,14 @@
+{
+  "name": "@agent-loop/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:demo": "vite build --mode demo",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@agent-loop/shared": "*"
+  }
+}

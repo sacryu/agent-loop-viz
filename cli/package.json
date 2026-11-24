@@ -1,0 +1,34 @@
+{
+  "name": "agent-loop",
+  "version": "0.2.0",
+  "description": "Watch your Claude Code sessions as planetary systems: every step, what it touched, how long it took. Local by default; share with friends through an end-to-end encrypted galaxy group.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sacryu/agent-loop-viz.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/sacryu/agent-loop-viz#readme",
+  "bugs": "https://github.com/sacryu/agent-loop-viz/issues",
+  "type": "module",
+  "bin": {
+    "agent-loop": "bin.mjs"
+  },
+  "files": [
+    "bin.mjs",
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "claude-code",
+    "visualization",
+    "hooks",
+    "agent"
+  ],
+  "scripts": {
+    "prepack": "node ../tools/pack-cli.mjs"
+  }
+}
