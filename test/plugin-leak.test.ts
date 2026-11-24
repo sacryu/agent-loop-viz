@@ -873,7 +873,8 @@ describe("上报不出去时告诉用户", () => {
   });
 
   it("补发的候选只从 usage 缓存来：缓存两小时没动过、读不懂、记录没了、编号不合法的都不算", () => {
-    const cfg = tmp(), dir = tmp(), now = Date.now();
+    // 取整秒：下面要按值比较修改时间，utimesSync 收的是浮点秒数，Linux 存纳秒，毫秒的零头读回来会差一点（…122.999）
+    const cfg = tmp(), dir = tmp(), now = Math.floor(Date.now() / 1000) * 1000;
     fakeClaude(cfg, {}, { a: 10 * MIN, b: 20 * MIN, noCache: 10 * MIN }, now);
     const rec = (sid: string) => join(cfg, "projects", "C--work-demo", `${sid}.jsonl`);
     usageCache(dir, "ha", rec("a"), now - 10 * MIN);
