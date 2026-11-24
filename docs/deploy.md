@@ -8,7 +8,7 @@
 
 ```sh
 # 在你自己的电脑上：生成一个星系群（密钥只在这台电脑上，服务器拿不到）
-npx agent-loop invite https://loop.example.com
+npx agent-loop-viz invite https://loop.example.com
 #   → 邀请链接 https://loop.example.com/#k=…   发给朋友，自己也填进插件的 server_url
 #   → 星系群编号 9b2eaa35043f96dfd6b1c9f661d13b86              填进服务器的 GROUPS
 
@@ -55,7 +55,7 @@ curl https://loop.example.com/healthz  # {"ok":true,"local":false,"open":false,"
 
 ## 3. npm 包
 
-`cli/` 就是发布到 npm 的包（`npx agent-loop`）：
+`cli/` 就是发布到 npm 的包（`npx agent-loop-viz`）：
 
 ```sh
 npm run build
@@ -64,7 +64,7 @@ cd cli && npm pack --dry-run     # 看看包里有什么
 npm publish                      # 发布（要先 npm login）
 ```
 
-包名 `agent-loop` 和 GitHub 仓库名（`agent-loop-viz`）不一样：包名是命令的名字，README、插件的提示里写的都是 `npx agent-loop`。发布前再查一次包名：`npm view agent-loop`（2026-11-24 查过还没人用）。
+包名和 GitHub 仓库名一样是 `agent-loop-viz`，命令就是 `npx agent-loop-viz`。`agent-loop` 发不了：npm 认为它和已有的 `agentloop` 太像（去掉连字符后相同）。账号开着两步验证（网页验证），`npm publish` 要在自己的终端里跑，按回车去浏览器确认。
 
 ## 4. 开源
 
@@ -104,7 +104,7 @@ npm run live:watch    # 一保存就构建、推送（1～3 秒）
 - 只改了前端（`web/`）：换文件，不重启，浏览器刷新就是新的。
 - 改了服务器（`server/src`、`shared/src`）：`server.mjs` 内容变了才推，推完重启容器（1 秒左右）。内存里的星系会清空，插件下一次上报时回来。
 - 改了 `package.json` 的依赖或 Node 版本时才需要重建镜像。
-- 协议升到 2 以后，测试服务器是星系群模式（不在回环地址上）：测试的人要用 `npx agent-loop invite http://<IP>:4317` 生成的邀请链接当 `server_url`，没有邀请链接的插件什么都不发。用 `http://<IP>` 打开时浏览器没有 WebCrypto，页面用自带的纯 JS 实现解密，并提示「连接没有加密传输」。
+- 协议升到 2 以后，测试服务器是星系群模式（不在回环地址上）：测试的人要用 `npx agent-loop-viz invite http://<IP>:4317` 生成的邀请链接当 `server_url`，没有邀请链接的插件什么都不发。用 `http://<IP>` 打开时浏览器没有 WebCrypto，页面用自带的纯 JS 实现解密，并提示「连接没有加密传输」。
 
 ## 6. 插件的公开仓库
 

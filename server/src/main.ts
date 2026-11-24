@@ -3,7 +3,7 @@
 //   PORT               端口，默认 4317
 //   LOCAL              1：本机模式（一个隐含的星系群、明文附件、调试页）；0：按星系群隔离、只收密文。
 //                      默认：绑定在回环地址时是 1，否则是 0
-//   GROUPS             白名单：逗号分隔的星系群编号，只接受这些（自己部署时用，编号由 npx agent-loop invite 给出）。
+//   GROUPS             白名单：逗号分隔的星系群编号，只接受这些（自己部署时用，编号由 npx agent-loop-viz invite 给出）。
 //                      空着就是开放模式：任何邀请链接都能创建星系群（官网）
 //   MAX_GROUPS         星系群总数上限，满了对新的星系群返回 503，默认 1000
 //   MAX_PER_GROUP      每个星系群最多几个星系，默认 50
@@ -32,7 +32,7 @@ if (local && !loopback) {
   console.warn(`注意：服务监听在 ${host}，却是本机模式（LOCAL=1）。本机模式收明文附件、不需要口令，只应该在自己电脑上用。`);
 }
 const groups = (env.GROUPS || "").split(",").map(s => s.trim()).filter(Boolean);
-for (const g of groups) if (!ID_RE.test(g)) throw new Error(`GROUPS 里的「${g}」不是星系群编号（${ID_HEX} 个十六进制字符），由 npx agent-loop invite 给出`);
+for (const g of groups) if (!ID_RE.test(g)) throw new Error(`GROUPS 里的「${g}」不是星系群编号（${ID_HEX} 个十六进制字符），由 npx agent-loop-viz invite 给出`);
 
 const args = process.argv.slice(2);
 const recIdx = args.indexOf("--record");

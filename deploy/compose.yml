@@ -1,5 +1,5 @@
 # 一键部署：在服务器上
-#   cp deploy/.env.example deploy/.env   # 填 DOMAIN 和 GROUPS（GROUPS 由 npx agent-loop invite https://<域名> 给出）
+#   cp deploy/.env.example deploy/.env   # 填 DOMAIN 和 GROUPS（GROUPS 由 npx agent-loop-viz invite https://<域名> 给出）
 #   docker compose -f deploy/compose.yml up -d --build
 services:
   app:

@@ -20,10 +20,10 @@ Every visual has a real physical basis (limb darkening, differential rotation, K
 
 ## Quick start (just you, on your computer)
 
-Needs Node.js 20+ (`npx agent-loop` runs the server; the plugin alone needs 18+).
+Needs Node.js 20+ (`npx agent-loop-viz` runs the server; the plugin alone needs 18+).
 
 ```sh
-npx agent-loop          # starts the server at http://127.0.0.1:4317
+npx agent-loop-viz          # starts the server at http://127.0.0.1:4317
 ```
 
 In Claude Code:
@@ -46,7 +46,7 @@ A galaxy group is a few galaxies that can see each other. It lives on a server: 
 
 Which group your galaxy is in is managed only in Claude Code, by the plugin; the web page just shows what you're in.
 
-**Create a group**: run `/agent-loop:create https://<server>` in Claude Code (without the address it uses the server you report to now). The plugin checks that the server takes new groups, generates the key on your computer and reports your galaxy to the new group; only once the server accepts it does it save the new invite link into its `server_url` setting (if the server refuses, your current setting is left alone). Both the plugin and the server need to be 0.2.11 or newer. The key never shows up in the conversation: the group opens in your browser with the invite link ready to copy (later it's under **Invite**). Run `/reload-plugins` afterwards. Servers that only accept listed groups (`GROUPS`) need the admin to make the link with `npx agent-loop invite`.
+**Create a group**: run `/agent-loop:create https://<server>` in Claude Code (without the address it uses the server you report to now). The plugin checks that the server takes new groups, generates the key on your computer and reports your galaxy to the new group; only once the server accepts it does it save the new invite link into its `server_url` setting (if the server refuses, your current setting is left alone). Both the plugin and the server need to be 0.2.11 or newer. The key never shows up in the conversation: the group opens in your browser with the invite link ready to copy (later it's under **Invite**). Run `/reload-plugins` afterwards. Servers that only accept listed groups (`GROUPS`) need the admin to make the link with `npx agent-loop-viz invite`.
 
 **Check where you report**: `/agent-loop:status` shows the server and group fingerprint, whether the plugin is reporting, the last result, your galaxy's name and sharing level, and the plugin version.
 
@@ -68,7 +68,7 @@ The plugin needs Node.js 18+ (`node` on your PATH). If it can't report (no key i
 **Host a group on your own server** (needs Docker, a domain pointing at the server, ports 80/443):
 
 ```sh
-npx agent-loop invite https://loop.example.com   # prints the invite link and a group id
+npx agent-loop-viz invite https://loop.example.com   # prints the invite link and a group id
 cp deploy/.env.example deploy/.env               # set DOMAIN and GROUPS=<that group id>
 docker compose -f deploy/compose.yml up -d --build
 ```
@@ -122,7 +122,7 @@ plugin/        the Claude Code plugin: manifest, hooks.json, report.mjs, /agent-
 shared/        protocol schema, attachment slots, wire format, and the state machine (used by server and demo)
 server/        receive, validate, rate-limit, group isolation, push to browsers
 web/           the page (TypeScript + Vite, Canvas 2D / WebGL); crypto.ts decrypts in the browser
-cli/           the npm package: npx agent-loop, npx agent-loop invite
+cli/           the npm package: npx agent-loop-viz, npx agent-loop-viz invite
 tools/demo/    the demo site's script (all fictional) and its expander
 docs/          plan, privacy, physics, findings
 ```

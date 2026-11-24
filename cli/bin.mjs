@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Agent Loop 的命令行（npm 包 agent-loop）。
-//   npx agent-loop                         在本机起服务（http://127.0.0.1:4317），插件默认就发到这里
-//   npx agent-loop --port 5000             换个端口（插件的 server_url 也要跟着改）
-//   npx agent-loop invite https://<域名>   自己部署时：生成一个星系群，打印邀请链接和要填进 GROUPS 的编号
+//   npx agent-loop-viz                         在本机起服务（http://127.0.0.1:4317），插件默认就发到这里
+//   npx agent-loop-viz --port 5000             换个端口（插件的 server_url 也要跟着改）
+//   npx agent-loop-viz invite https://<域名>   自己部署时：生成一个星系群，打印邀请链接和要填进 GROUPS 的编号
 //                                          密钥在这台电脑上生成，不发给任何服务器
 import { createHash, hkdfSync, randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -22,9 +22,9 @@ export function newGroup(K = randomBytes(32)) {
 function help() {
   console.log(`Agent Loop
 
-  npx agent-loop                        start the local server (http://127.0.0.1:4317)
-  npx agent-loop --port <n> --host <h>  listen somewhere else
-  npx agent-loop invite <server url>    create a galaxy group for your own server:
+  npx agent-loop-viz                        start the local server (http://127.0.0.1:4317)
+  npx agent-loop-viz --port <n> --host <h>  listen somewhere else
+  npx agent-loop-viz invite <server url>    create a galaxy group for your own server:
                                         prints the invite link and the id to put in GROUPS`);
 }
 
@@ -32,7 +32,7 @@ async function main() {
   if (args[0] === "help" || args.includes("--help") || args.includes("-h")) return help();
   if (args[0] === "invite") {
     const url = (args[1] || "").trim().replace(/\/+$/, "");
-    if (!/^https?:\/\//.test(url)) { console.error("usage: npx agent-loop invite https://<your server>"); process.exit(1); }
+    if (!/^https?:\/\//.test(url)) { console.error("usage: npx agent-loop-viz invite https://<your server>"); process.exit(1); }
     const g = newGroup();
     console.log(`Invite link (anyone with it can join and watch this group; keep it secret):\n\n  ${url}/#k=${g.k}\n`);
     console.log(`Group id (add it to GROUPS on the server, comma-separated):\n\n  ${g.group}\n`);
@@ -51,4 +51,4 @@ async function main() {
 }
 
 const isMain = (() => { try { return !!process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href; } catch { return false; } })();
-if (isMain || process.argv[1]?.endsWith("agent-loop")) main();
+if (isMain || process.argv[1]?.endsWith("agent-loop-viz")) main();

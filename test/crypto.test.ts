@@ -32,7 +32,7 @@ describe("浏览器的密码学", () => {
     });
   }
 
-  it("命令行生成的星系群（npx agent-loop invite）和插件、页面算出来的一样", async () => {
+  it("命令行生成的星系群（npx agent-loop-viz invite）和插件、页面算出来的一样", async () => {
     const g = newGroup(Buffer.from(K.replace(/-/g, "+").replace(/_/g, "/") + "=", "base64"));
     expect(g.k).toBe(K);
     expect(g.access).toBe(nodeDerive(K)!.access);

@@ -12,7 +12,7 @@
     "server_url": {
       "type": "string",
       "title": "Server URL or invite link",
-      "description": "Where to report. The default is a server on this computer (npx agent-loop). Paste an invite link (https://…/#k=…) to join a galaxy group: everything except anonymous categories and timings is encrypted with the key in the link.",
+      "description": "Where to report. The default is a server on this computer (npx agent-loop-viz). Paste an invite link (https://…/#k=…) to join a galaxy group: everything except anonymous categories and timings is encrypted with the key in the link.",
       "default": "http://127.0.0.1:4317",
       "sensitive": true
     },

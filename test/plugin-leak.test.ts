@@ -594,7 +594,7 @@ describe("上报不出去时告诉用户", () => {
     expect(reportProblem(t, { url: remote, status: 400 })).toMatch(/update the plugin/);
     for (const s of [204, 429, 413, 503]) expect(reportProblem(t, { url: remote, status: s })).toBeNull();
     expect(reportProblem(t, { url: "http://other:1", status: "unreachable" })).toBeNull();
-    expect(reportProblem(R(""), { url: "http://127.0.0.1:4317", status: "unreachable" })).toMatch(/npx agent-loop/);
+    expect(reportProblem(R(""), { url: "http://127.0.0.1:4317", status: "unreachable" })).toMatch(/npx agent-loop-viz/);
     for (const s of ["unreachable", 401, 403, 400] as const) expect(reportProblem(t, { url: remote, status: s }) || "").not.toContain(K);
     expect(reportProblem(R(`${remote}/#k=abc`), null)).not.toContain("abc");
   });
@@ -979,7 +979,7 @@ describe("上报不出去时告诉用户", () => {
     expect(lastStatus(d)).toBeNull();
     expect(await run([], env, JSON.stringify({ hook_event_name: "Stop", session_id: "s" }))).toEqual({ out: "", code: 0 });
     expect(lastStatus(d)).toEqual({ url: "http://127.0.0.1:1", status: "unreachable" });
-    expect(JSON.parse((await run(["--check"], env, start())).out).systemMessage).toMatch(/npx agent-loop/);
+    expect(JSON.parse((await run(["--check"], env, start())).out).systemMessage).toMatch(/npx agent-loop-viz/);
   });
 
   it("服务器拒收（403）：记下状态码", async () => {
@@ -1316,7 +1316,7 @@ describe("上报不出去时告诉用户", () => {
     expect(await unchanged("<srv>", { ...OPEN, version: "0.2.10" }, null, /older Agent Loop server \(0\.2\.10\)/)).toEqual([]);
     // 答了但不是 JSON（代理、登录页）：不是「连不上」
     expect(await unchanged("<srv>", "<html>login</html>", null, /did not answer like an Agent Loop server/)).toEqual([]);
-    // 本机的服务（npx agent-loop）：没有群
+    // 本机的服务（npx agent-loop-viz）：没有群
     expect(await unchanged("<srv>", { ok: true, local: true }, null, /single computer/)).toEqual([]);
     // 不像 Agent Loop 的服务器
     expect(await unchanged("<srv>", { hello: 1 }, null, /did not answer like an Agent Loop server/)).toEqual([]);

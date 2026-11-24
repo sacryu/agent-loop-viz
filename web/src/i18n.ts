@@ -153,7 +153,7 @@ const zh = {
 
   offlineTitle: "(未连接) ",
   reconnecting: "服务未连接，正在重连…",
-  noServer: "连不上服务：先运行 npx agent-loop（只想看看样子，地址后加 ?demo）",
+  noServer: "连不上服务：先运行 npx agent-loop-viz（只想看看样子，地址后加 ?demo）",
 };
 
 type Strings = typeof zh;
@@ -280,7 +280,7 @@ const en: Strings = {
 
   offlineTitle: "(offline) ",
   reconnecting: "Lost the server, reconnecting…",
-  noServer: "Can't reach the server: run npx agent-loop first (just looking? add ?demo to the address)",
+  noServer: "Can't reach the server: run npx agent-loop-viz first (just looking? add ?demo to the address)",
 };
 
 export const T: Strings = LANG === "zh" ? zh : en;

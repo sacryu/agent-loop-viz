@@ -1152,7 +1152,7 @@ export function reportProblem(target, last) {
   const s = last.status;
   if (s === "unreachable") {
     return target.local
-      ? `Agent Loop could not reach ${url} last time. To watch on this computer, run \`npx agent-loop\`. To join a galaxy group instead, paste its invite link (…/#k=…) into the plugin's server_url setting.`
+      ? `Agent Loop could not reach ${url} last time. To watch on this computer, run \`npx agent-loop-viz\`. To join a galaxy group instead, paste its invite link (…/#k=…) into the plugin's server_url setting.`
       : `Agent Loop could not reach ${url} last time. Check that the server is running and reachable from this computer.`;
   }
   if (s === 401 || s === 403) return `Agent Loop: ${url} refused the reports (HTTP ${s}). The invite link may be wrong, or this server only accepts certain galaxy groups. ${FIX_LINK}`;
@@ -1587,7 +1587,7 @@ export const newK = () => b64u(randomBytes(32));
 
 /**
  * 能不能在这台服务器上建群，看它 /healthz 答的（serverHealth）。能返回 null，不能返回原因
- *   - 本机的服务（npx agent-loop）没有群
+ *   - 本机的服务（npx agent-loop-viz）没有群
  *   - 服务器比 CREATE_SINCE 旧（不答 version）：它的页面不认 &created，新群的邀请链接没有地方显示
  *   - open 是 false：白名单的服务器只收管理员登记的群
  * @param {string} url @param {Awaited<ReturnType<typeof serverHealth>>} r @returns {string | null}
@@ -1597,13 +1597,13 @@ export function createBlocked(url, r) {
   const h = r.h;
   if (r.http >= 300) return `${url} did not answer like an Agent Loop server (HTTP ${r.http})`;
   if (!h || typeof h !== "object" || h.ok !== true) return `${url} did not answer like an Agent Loop server`;
-  if (h.local === true) return `${url} is a server for a single computer (npx agent-loop), which has no galaxy groups`;
+  if (h.local === true) return `${url} is a server for a single computer (npx agent-loop-viz), which has no galaxy groups`;
   const v = serverVersion(r);
   if (!newPage(v)) {
     return `${url} runs an older Agent Loop server (${v || "before 0.2.11"}) whose page cannot show a new group's invite link. ` +
       `Ask its admin to update the server to ${CREATE_SINCE} or newer, or join one of its groups with an invite link`;
   }
-  if (h.open === false) return `${url} only accepts galaxy groups its admin has registered. Ask the admin for an invite link (made with npx agent-loop invite) and join with that`;
+  if (h.open === false) return `${url} only accepts galaxy groups its admin has registered. Ask the admin for an invite link (made with npx agent-loop-viz invite) and join with that`;
   return null;
 }
 
@@ -1612,7 +1612,7 @@ function createRefused(url, status) {
   if (status === "unreachable") return `could not reach ${url} to send the first report`;
   if (status === 503) return `${url} is full (HTTP 503): it has reached its limit of galaxy groups or galaxies. Try again later or ask its admin`;
   if (status === 429) return `${url} is limiting new galaxy groups and galaxies from this network (HTTP 429). Try again in an hour`;
-  if (status === 403) return `${url} only accepts galaxy groups its admin has registered (HTTP 403). Ask the admin for an invite link (made with npx agent-loop invite) and join with that`;
+  if (status === 403) return `${url} only accepts galaxy groups its admin has registered (HTTP 403). Ask the admin for an invite link (made with npx agent-loop-viz invite) and join with that`;
   return `${url} refused the first report to the new group (HTTP ${status})`;
 }
 

@@ -1,5 +1,5 @@
 {
-  "name": "agent-loop",
+  "name": "agent-loop-viz",
   "version": "0.2.0",
   "description": "Watch your Claude Code sessions as planetary systems: every step, what it touched, how long it took. Local by default; share with friends through an end-to-end encrypted galaxy group.",
   "license": "MIT",
@@ -12,7 +12,7 @@
   "bugs": "https://github.com/sacryu/agent-loop-viz/issues",
   "type": "module",
   "bin": {
-    "agent-loop": "bin.mjs"
+    "agent-loop-viz": "bin.mjs"
   },
   "files": [
     "bin.mjs",

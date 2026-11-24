@@ -20,10 +20,10 @@ Agent Loop 是一个插件加一个小服务器，把正在跑的 Claude Code �
 
 ## 快速开始（只有你自己，在自己电脑上）
 
-需要 Node.js 20 或更新（`npx agent-loop` 要起服务器；只装插件的话 18 就够）。
+需要 Node.js 20 或更新（`npx agent-loop-viz` 要起服务器；只装插件的话 18 就够）。
 
 ```sh
-npx agent-loop          # 在 http://127.0.0.1:4317 起服务
+npx agent-loop-viz          # 在 http://127.0.0.1:4317 起服务
 ```
 
 在 Claude Code 里：
@@ -46,7 +46,7 @@ npx agent-loop          # 在 http://127.0.0.1:4317 起服务
 
 你的星系在哪个群，只在 Claude Code 里由插件管；网页只负责显示。
 
-**建一个星系群**：在 Claude Code 里运行 `/agent-loop:create https://<服务器>`（不带地址就建在你现在上报的那台服务器上）。插件先问服务器收不收新群，在你的电脑上生成密钥，把你的星系报到新群，服务器收下了才把新的邀请链接存进插件的 `server_url` 设置（被拒时原来的设置不动）。插件和服务器都要 0.2.11 以上。密钥不会出现在对话里：浏览器里会打开这个群，邀请链接就在弹出的面板里（以后在「邀请」里也能找到）。之后运行 `/reload-plugins`。只接受名单里的星系群（`GROUPS`）的服务器，要请管理员用 `npx agent-loop invite` 生成链接。
+**建一个星系群**：在 Claude Code 里运行 `/agent-loop:create https://<服务器>`（不带地址就建在你现在上报的那台服务器上）。插件先问服务器收不收新群，在你的电脑上生成密钥，把你的星系报到新群，服务器收下了才把新的邀请链接存进插件的 `server_url` 设置（被拒时原来的设置不动）。插件和服务器都要 0.2.11 以上。密钥不会出现在对话里：浏览器里会打开这个群，邀请链接就在弹出的面板里（以后在「邀请」里也能找到）。之后运行 `/reload-plugins`。只接受名单里的星系群（`GROUPS`）的服务器，要请管理员用 `npx agent-loop-viz invite` 生成链接。
 
 **看现在报给哪里**：`/agent-loop:status` 列出服务器和星系群指纹、插件在不在上报、上次发得怎么样、你的星系名字和分享档位、插件版本。
 
@@ -68,7 +68,7 @@ claude plugin install agent-loop@agent-loop --config "server_url=<邀请链接>"
 **在自己的服务器上建星系群**（需要 Docker、一个指向服务器的域名、开放 80 和 443 端口）：
 
 ```sh
-npx agent-loop invite https://loop.example.com   # 打印邀请链接和星系群编号
+npx agent-loop-viz invite https://loop.example.com   # 打印邀请链接和星系群编号
 cp deploy/.env.example deploy/.env               # 填 DOMAIN，GROUPS=<那个编号>
 docker compose -f deploy/compose.yml up -d --build
 ```
