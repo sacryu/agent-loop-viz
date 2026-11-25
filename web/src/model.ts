@@ -63,6 +63,10 @@ export interface Session extends Ring {
   ctxTok: number | null; outTok: number | null;
   off: number | null; orb: Orbit | null; goneAt: number | null; bornAt: number; labelA: number;
   lastEvent: number; sizeK?: number; wire: Map<string, WireStep>; kindOf?: Map<string, string>;
+  /** 开场以后才来的：沿抛物线从外面落进轨道（被捕获）。开场时已经在的照开场动画出现 */
+  capture?: boolean;
+  /** 走了的对话沿抛物线飞出去（逃逸）：起飞那一刻的轨道半径、角度（不含拖动的角度）、球的大小 */
+  esc?: { R: number; th: number; rm: number } | null;
 }
 export interface Orbit {
   key: string; title: string; sids: string[]; ghosts: string[]; leaving: boolean; rho: number | null; spin: number; phase0: number; wl: number; p: number;
@@ -111,7 +115,7 @@ export function getSession(sid: string): Session {
     const tp = performance.now(), early = tp - M.bornAt < 3000;
     S = Object.assign(ringState(sid), {
       project: "", label: "", lapsDone: 0, roundSince: 0, ask: "", ans: "", model: null, ctxTok: null, outTok: null, off: null, orb: null, goneAt: null, waitSub: false, stale: false,
-      bornAt: tp + (early ? 450 + M.sessions.size * 70 : 0), labelA: 0, lastEvent: 0, wire: new Map<string, WireStep>(),
+      bornAt: tp + (early ? 450 + M.sessions.size * 70 : 0), labelA: 0, lastEvent: 0, wire: new Map<string, WireStep>(), capture: !early,
     }) as Session;
     M.sessions.set(sid, S);
   }
@@ -300,11 +304,11 @@ export const wordOf = (S: Ring) => (S.status === "working" ? (S.phase === "act" 
 // 轨道不再按序号算位置，而是各自带着状态：
 //   wl：占位（0→1）。半径按「外面还有多少占位」连续地算，所以进场时里面的轨道一点点往里让，
 //       退场时缝一点点合上；不管去掉的是哪一条，别的轨道都不会跳。
-//   p ：线画到了哪里（0→1），从项目名那一点起绕一周。进场先让位、再画线，球在线扫过时才出现；
-//       退场倒过来：线连同上面的球收回到项目名，名字最后淡掉，然后缝合上。
+//   p ：线画到了哪里（0→1），从项目名那一点起绕一周。进场先让位、再画线；开场时球在线扫过时才出现，
+//       之后才来的球沿抛物线从外面落进来（galaxyView.ts）。退场倒过来：球沿抛物线飞走，线收回到项目名，名字最后淡掉，然后缝合上。
 //   spin：各自累计的公转角度，序号变了也不会跳，只是速度慢慢变成新位置的速度。
 // 服务端新出现的项目总在最外面；退场中的轨道留在原来的位置，直到它的占位归零。
-export const ROOM_S = 0.7, DRAW_S = 1.1, FOLD_S = 0.9, GONE_MS = 480;
+export const ROOM_S = 0.7, DRAW_S = 1.1, FOLD_S = 0.9;
 
 export function syncGroups(next: { key: string; title: string; sids: string[] }[]) {
   const intro = !M.orbitList.length && performance.now() - M.bornAt < 3000;   // 刚进来：照开场动画一条条画出来

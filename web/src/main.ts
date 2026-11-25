@@ -22,7 +22,7 @@ import { PERF, starInfo } from "./star.ts";
 import { M, applyDelta, applyFull, hasFull, refreshText, resetGalaxy, type Session, type Step, type Sub } from "./model.ts";
 import { conn, connect, debugConn, requestFull, setFocus } from "./net.ts";
 import { ATT, detailOf } from "./attach.ts";
-import { F, cam, scr, view } from "./scene.ts";
+import { F, cam, project, scr, view } from "./scene.ts";
 import { U, applySummary, fitCam, flyHooks, locate, panBy, stopFly, universeFrame, uscr, worldOf, zoomAt } from "./universeView.ts";
 import { T } from "./i18n.ts";
 import { applyPlugins, updateBar } from "./update.ts";
@@ -389,6 +389,8 @@ const r3 = (a: number) => +a.toFixed(3), avg = (a: number[]) => a.length ? a.red
   hover: (x: number, y: number) => { mouse.x = U.mouse.x = x; mouse.y = U.mouse.y = y; mouse.inside = U.mouse.inside = true; },
   conn: debugConn,
   at: (sid: string) => { const P = G.placed.get(sid); return P ? scr(P.wx, P.wy) : null; }, origin: () => scr(0, 0),
+  /** 恒星此刻在屏幕上的位置（被行星拉得偏离质心）、质量 */
+  star: () => { const [x, y] = project(G.bx, G.by); return { at: scr(x, y), m: r3(G.starM) }; },
   subSpots: () => [...F.subSpots].map(([k, v]) => ({ k, ...v })),
   demoAdd, demoRemove,
   /** 打开某个对话倒数第 i 步的详情 */

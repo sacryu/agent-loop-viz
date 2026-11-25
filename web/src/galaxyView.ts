@@ -5,9 +5,9 @@
 import { ctx, fit, grain, textW, V } from "./canvas.ts";
 import { detailOpen } from "./detail.ts";
 import { currentStep, drawFog, drawRing, dust, syncSats } from "./draw.ts";
-import { PERF, drawStar, galaxyModel, starOf } from "./star.ts";
+import { PERF, drawStar, galaxyModel, massOf, starOf } from "./star.ts";
 import {
-  DRAW_S, FOLD_S, GONE_MS, M, PULSE_MS, RING_F, ROOM_S, SUB_BACK_MS, bgOnly, hasFull, isEnded, layout, subsAlive, wordOf,
+  DRAW_S, FOLD_S, M, PULSE_MS, RING_F, ROOM_S, SUB_BACK_MS, bgOnly, hasFull, isEnded, layout, subsAlive, wordOf,
   type Orbit, type Ring, type Session, type Step,
 } from "./model.ts";
 import { F, PERSP, cam, project, scr, view } from "./scene.ts";
@@ -30,7 +30,24 @@ export const G = {
   dragAngle: 0, lastDragAngle: 0,
   placed: new Map<string, Placed>(),
   orbits: [] as { O: Orbit; k: number; R: number; e: number; title: string; phase: number; labelA: number; rm: number }[],
+  starM: 1,            // 恒星的质量（缓动着跟模型走）
+  bx: 0, by: 0,        // 恒星相对质心的位置（轨道面上的坐标）
 };
+
+// ---- 引力。物理依据见 docs/physics.md 的「行星系」
+/** 恒星被行星拉着绕质心转：偏离质心 = Σ 行星质量 × 行星位置 / 恒星质量 × WOBBLE。行星质量 ∝ 大小³ */
+const WOBBLE = 0.03;
+/** 对话走了：沿抛物线（刚好是逃逸速度）飞出去；新对话来了：沿抛物线从外面落进轨道。各用多久（ms），飞到轨道半径的 1 + PARA_D² 倍 */
+const ESC_MS = 2200, CAP_MS = 2000, PARA_D = 1.25;
+const PARA_S = PARA_D + PARA_D ** 3 / 3;
+/**
+ * 抛物线轨道上，从近日点（就是原来的轨道上那一点）出发经过的时间 ∝ D + D³/3（Barker 方程），D = tan(真近点角 / 2)，
+ * 半径 = 近日点距离 × (1 + D²)。给定时间进度 u（0→1）反解 D 是个三次方程，用卡尔达诺公式直接解出来，不用迭代
+ */
+function barkerD(u: number) {
+  const b = 1.5 * u * PARA_S, q = Math.sqrt(b * b + 1);
+  return Math.cbrt(b + q) + Math.cbrt(b - q);
+}
 /** 恒星抛出的那层壳从星面走到最远要多久（ms） */
 const SHELL_MS = 1300;
 const HOT_RGB = HOT.split(",").map(Number), CLAUDE_RGB = CLAUDE.split(",").map(Number);
@@ -134,7 +151,7 @@ export function focus(sid: string | null) {
 export function enterGalaxy() {
   G.focusSid = null; G.hoverSid = null; G.hoverStep = null;
   cam.ready = false; cam.sid = null; cam.f = 0; cam.subK = 0;
-  G.placed = new Map(); G.orbits = [];
+  G.placed = new Map(); G.orbits = []; G.bx = G.by = 0;
   resetZoom();
 }
 
@@ -183,8 +200,11 @@ export function galaxyFrame(tp: number, dt: number, alpha: number, run: number, 
   view.rout = W * 0.43;
   view.tilt = clamp(H * 0.8 / (view.rout * (1 / (1 - PERSP) + 1 / (1 + PERSP))), 0.2, 0.48);
   const rmBase = clamp(Math.min(W, H) * 0.027, 14, 27);
+  const star = starOf(galaxyModel());
+  G.starM += (massOf(star) - G.starM) * (1 - Math.exp(-dt / 1.5));   // 换了模型：转速、晃动慢慢变过去
+  const kep = Math.sqrt(G.starM);   // 开普勒：同一半径上，角速度 ∝ √恒星质量
   G.orbitSpeed += ((1 - cam.f) * run * (drag.on ? 0 : G.hoverSid && !G.focusSid ? 0.15 : 1) - G.orbitSpeed) * eSlow;
-  G.orbitClock += dt * G.orbitSpeed;
+  G.orbitClock += dt * G.orbitSpeed * kep;
   if (!drag.on) { G.dragAngle += drag.v * dt; drag.v *= Math.exp(-dt / 0.45); }   // 松手后带一点惯性
 
   // 轨道的进场、退场（见 model.ts 的 syncGroups）。wl、p 匀速走，用的时候再过一道 smooth，掉头也是连续的
@@ -217,8 +237,8 @@ export function galaxyFrame(tp: number, dt: number, alpha: number, run: number, 
     const e = smooth(0, 1, O.p);
     const rho = lerp(rin * Math.pow(q, idx), rin + gap * idx, cr) * (O.leaving ? 1 : 1 + 0.06 * (1 - e));   // 新的一条从稍外面落进来
     O.rho = O.rho == null ? rho : O.rho + (rho - O.rho) * eSlow;
-    // 开普勒第三定律：周期² ∝ 半径³，角速度 ∝ 半径^-1.5。最外面一圈 8 分钟转一周；轨道挪了位置，速度跟着慢慢变
-    O.spin += dt * G.orbitSpeed * TAU / 480 / Math.pow(Math.max(0.2, O.rho), 1.5);
+    // 开普勒第三定律：周期² ∝ 半径³ / 恒星质量，角速度 ∝ 半径^-1.5。类太阳恒星时最外面一圈 8 分钟转一周；轨道挪了位置，速度跟着慢慢变
+    O.spin += dt * G.orbitSpeed * kep * TAU / 480 / Math.pow(Math.max(0.2, O.rho), 1.5);
     const R = view.rout * O.rho, count = O.sids.length || O.ghosts.length;
     return { O, k, R, e, title: O.title, phase: O.phase0 + O.spin + G.dragAngle,
              labelA: smooth(0, 0.25, O.p), rm: Math.min(rmBase, R * (1 + view.tilt) / 2 * TAU / (Math.max(1, count) * 4.6)) };
@@ -230,6 +250,19 @@ export function galaxyFrame(tp: number, dt: number, alpha: number, run: number, 
   if (!cam.ready) { cam.sx = W / 2; cam.sy = view.oy; cam.lz = Math.log(0.9); cam.ready = true; }
   const placed = new Map<string, Placed>();
   G.placed = placed;
+  let bx = 0, by = 0;   // Σ 行星质量 × 位置（轨道面上），算恒星被拉到哪
+  /** 把一个对话放在轨道面上半径 r、角度 th 处 */
+  const place = (S: Session, r: number, th: number, rm: number, vis: number, ghost: boolean) => {
+    const X = r * Math.cos(th), Y = r * Math.sin(th);
+    if (PERSP * Y >= view.rout * 0.9) return;   // 飞出去的球不能跑到镜头后面
+    const [wx, wy, s] = project(X, Y);
+    // 光从中心的恒星照过来：轨道面上指向圆心是 (-cos, -sin)，轨道面往屏幕上压扁 tilt，近的一侧（sin > 0）朝着你
+    const st = Math.sin(th), L = (S.light ??= [0, 0, 0]);   // 每帧都要写：原地改，不新建数组
+    L[0] = -Math.cos(th); L[1] = -st * view.tilt; L[2] = -st * tiltZ;
+    placed.set(S.sid, { S, wx, wy, vis, ghost, r: rm * s * S.sizeK!, a: lerp(0.56, 1, (st + 1) / 2) });
+    const m = S.sizeK! ** 3 * vis * smooth(0, 1, (tp - S.bornAt) / 520);   // 还没出现的、飞走了的不算
+    bx += m * X; by += m * Y;
+  };
   for (const o of G.orbits) {
     const O = o.O;
     const put = (sid: string, i: number) => {
@@ -241,24 +274,39 @@ export function galaxyFrame(tp: number, dt: number, alpha: number, run: number, 
         const target = TAU * i / O.sids.length;
         if (S.off == null || S.orb !== O) S.off = target;
         else { let dd = (target - S.off) % TAU; if (dd > Math.PI) dd -= TAU; if (dd < -Math.PI) dd += TAU; S.off += dd * eSlow; }
+        S.esc = null;
       } else if (S.off == null) S.off = 0;
       S.orb = O;
       // 步数多的对话大一点：不是所有的环都一样重
       const sizeT = 0.8 + 0.42 * clamp(Math.log(1 + Math.max(S.stepsTotal, S.steps.length)) / Math.log(600), 0, 1);
       S.sizeK = S.sizeK == null ? sizeT : S.sizeK + (sizeT - S.sizeK) * eSlow;
-      const th = o.phase + S.off, [wx, wy, s] = project(o.R * Math.cos(th), o.R * Math.sin(th));
-      // 光从中心的恒星照过来：轨道面上指向圆心是 (-cos, -sin)，轨道面往屏幕上压扁 tilt，近的一侧（sin > 0）朝着你
-      const st = Math.sin(th), L = (S.light ??= [0, 0, 0]);   // 每帧都要写：原地改，不新建数组
-      L[0] = -Math.cos(th); L[1] = -st * view.tilt; L[2] = -st * tiltZ;
+      const th = o.phase + S.off;
+      // 走了：记下起飞的那一点，下面沿抛物线飞出去（轨道收走了也照样飞完）
+      if (ghost) { S.esc ??= { R: o.R, th: th - G.dragAngle, rm: o.rm }; return; }
       // 球跟着线走：线从项目名那一点（th = π/2）画过来，扫过这个球时它才出现；收回去时扫过就消失
       const rel = (((th - Math.PI / 2) % TAU) + TAU) % TAU / TAU;
-      let vis = smooth(rel, rel + 0.06, o.e * 1.06);
-      if (ghost && !O.leaving) vis *= 1 - smooth(0, GONE_MS, performance.now() - (S.goneAt ?? 0));   // 轨道还在，只是这个对话走了：淡出
-      placed.set(sid, { S, wx, wy, vis, ghost: ghost || O.leaving, r: o.rm * s * S.sizeK, a: lerp(0.56, 1, (Math.sin(th) + 1) / 2) });
+      const vis = smooth(rel, rel + 0.06, o.e * 1.06);
+      // 开场以后才来的：沿抛物线从外面落进来，正好在近日点停到轨道上（逃逸倒过来放）。真实的捕获要有第三个天体或者气体拖拽带走多余的能量
+      const uc = S.capture ? (tp - S.bornAt) / CAP_MS : 1;
+      if (uc < 1) {
+        const D = barkerD((1 - Math.max(0, uc)) ** 1.6);   // 到站前放慢，接上轨道上的速度
+        place(S, o.R * (1 + D * D), th - 2 * Math.atan(D), o.rm, 1, O.leaving);
+      } else place(S, o.R, th, o.rm, vis, O.leaving);
     };
     O.sids.forEach(put);
     O.ghosts.forEach(sid => put(sid, -1));
   }
+  // 走了的对话：从原来的轨道上加速到逃逸速度，沿抛物线飞走，越飞越慢，边飞边淡
+  for (const S of sessions.values()) {
+    const E = S.esc;
+    if (!E || S.goneAt == null || placed.has(S.sid)) continue;
+    const u = clamp((tp - S.goneAt) / ESC_MS, 0, 1), D = barkerD(u ** 1.6);   // 起步时放慢，从轨道上的速度接过来
+    place(S, E.R * (1 + D * D), E.th + G.dragAngle + 2 * Math.atan(D), E.rm, 1 - smooth(0.35, 1, u), true);
+  }
+  // 恒星和行星绕共同的质心转：质心不动（在原点），恒星在行星的反方向，偏离 ∝ 行星质量 / 恒星质量
+  const k = WOBBLE / G.starM;
+  G.bx += (-bx * k - G.bx) * eSlow; G.by += (-by * k - G.by) * eSlow;
+  const [swx, swy] = project(G.bx, G.by);
   // 退场动画放完了的对话，这才真的删掉
   for (const S of [...sessions.values()]) {
     if (S.goneAt == null) continue;
@@ -392,8 +440,7 @@ export function galaxyFrame(tp: number, dt: number, alpha: number, run: number, 
   ctx.globalAlpha = alpha;
   ctx.fillStyle = "#0B0C0E"; ctx.fillRect(0, 0, W, H);
   drawSky(M.galaxyId ?? "", alpha * intro * (1 - 0.6 * cam.f));   // 远处的恒星：在无穷远，镜头怎么动都不动
-  const [ox, oy] = scr(0, 0);
-  const star = starOf(galaxyModel());
+  const [ox, oy] = scr(swx, swy);   // 恒星（被行星拉得偏离质心一点）
   if (f < 0.98) {   // 恒星的光照亮周围的尘埃：一大片很淡的光，颜色跟着恒星
     ctx.save(); ctx.translate(ox, oy); ctx.scale(1, 0.62);
     const R = view.rout * 0.95 * z, g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);

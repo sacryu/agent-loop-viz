@@ -36,6 +36,12 @@ export const STARS: Record<StarClass["cls"], StarClass> = {
   O: { cls: "O", core: "214,226,255", limb: "118,146,236", size: 1.4, lum: 1.45 },
 };
 
+/**
+ * 恒星的质量（类太阳恒星 = 1）：用主序的质量-半径关系 R ∝ M^0.8 从压缩过的大小反推，所以和画出来的大小对得上。
+ * 真实的 M 型约 0.3、B 型约 5、O 型约 30 个太阳质量，这里和大小一样压缩了。管着公转快慢（开普勒）和恒星被行星拉得晃多少
+ */
+export const massOf = (s: StarClass) => s.size ** 1.25;
+
 /** 模型名 → 恒星。认不出或拿不到时是类太阳的 G 型 */
 export function starOf(model: string | null | undefined): StarClass {
   const m = (model || "").toLowerCase();
