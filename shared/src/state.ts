@@ -26,8 +26,8 @@ const WAIT_NOTIFICATIONS = new Set(["permission_prompt", "elicitation_dialog", "
 
 export interface Limits {
   maxSessions: number;      // 每个安装最多几个会话
-  staleMs: number;          // 多久没有事件标成「可能已关闭」
-  removeMs: number;         // 多久没有事件移除会话
+  staleMs: number;          // 多久没有事件（也没有报过还开着）标成「可能已关闭」
+  removeMs: number;         // 多久没有事件（也没有报过还开着）移除会话
   thinkStuckMs: number;     // 在想、没有工具和后台任务、这么久没有事件：回到待命（拿不到 Esc 打断的兜底）
   subFadeMs: number;        // 子 agent 结束后还列多久
   endedTtlMs: number;       // 收到 SessionEnd 以后，这段时间内迟到的事件不让它复活
@@ -35,7 +35,7 @@ export interface Limits {
 }
 
 export const DEFAULT_LIMITS: Limits = {
-  maxSessions: 50, staleMs: 30 * 60_000, removeMs: 2 * 3600_000, thinkStuckMs: 120_000, subFadeMs: 2_000,
+  maxSessions: 50, staleMs: 30 * 60_000, removeMs: 24 * 3600_000, thinkStuckMs: 120_000, subFadeMs: 2_000,
   endedTtlMs: 60_000, batchFallbackMs: 1_500,
 };
 
@@ -70,6 +70,8 @@ export class Session {
   steps: Step[] = [];
   stepsTotal = 0;
   lastEvent: number; stale = false;
+  /** 插件最近一次替它报「还开着」（Alive）的时间。只用来判断变暗和移除，不算动静（lastEvent 不变） */
+  aliveAt = 0;
   model: string | null = null;
   ctxTok: number | null = null; outTok: number | null = null;
   title?: WAtt; first?: WAtt; ask?: WAtt; ans?: WAtt;
@@ -201,6 +203,7 @@ export class Galaxy {
   private apply(ev: Event, t: number): void {
     const name = ev.ev, sid = ev.sid;
     if (name === "PostToolBatch") this.batchSupported = true;
+    if (name === "Alive") return this.onAlive(ev, t);
     let s = this.sessions.get(sid);
     if (!s) {
       if (name === "SessionEnd") return;
@@ -285,6 +288,33 @@ export class Galaxy {
       this.sumDirty = true;
     }
     if (ev.source === "compact" && s.compacting) this.endCompact(s, t);
+  }
+
+  /**
+   * 插件替开着、却安静了很久的会话报了一声「还开着」（这个会话自己没有动静，是同一台机器上别的会话替它报的）。
+   * 不是动静：状态、圈、lastEvent 都不动，只记下时间，看门狗据此不变暗、不移除。
+   * 服务器上没有这个会话（服务器重启过、超时移除过）：按待命新建，名片、标题、圈数步数、模型、token 数靠事件带的补上。
+   * 刚结束的会话不让它复活（和别的迟到的事件一样）
+   */
+  private onAlive(ev: Event, t: number) {
+    let s = this.sessions.get(ev.sid);
+    if (!s) {
+      const endedAt = this.ended.get(ev.sid);
+      if (endedAt != null && t - endedAt < this.limits.endedTtlMs) return;
+      if (this.sessions.size >= this.limits.maxSessions) return;
+      s = this.newSession(ev, t);
+      s.floorCounts(ev.laps, ev.steps);
+      if (ev.model) s.model = ev.model;
+      if (ev.ctx_tok != null) s.ctxTok = ev.ctx_tok;
+      if (ev.out_tok != null) s.outTok = ev.out_tok;
+      this.fillCard(s, ev);
+    }
+    const tx = ev.title ?? ev.enc_title;
+    if (tx !== undefined && !s.title) s.title = { k: "", x: tx };
+    this.lastEvent = Math.max(this.lastEvent, t);
+    s.aliveAt = Math.max(s.aliveAt, t);
+    s.stale = false;
+    this.touch(s);
   }
 
   private onSessionEnd(s: Session, t: number) {
@@ -599,7 +629,7 @@ export class Galaxy {
         s.phaseSince = s.lapStart;
         c = true;
       }
-      const quiet = t - s.lastEvent;
+      const quiet = t - s.lastEvent, unheard = t - Math.max(s.lastEvent, s.aliveAt);
       // 拿不到「在想的时候按 Esc 打断」：在想、没有工具和后台任务在跑、两分钟没有任何事件，就回到待命
       if (s.status === WORKING && !s.tools.size && !s.bgWait && quiet > this.limits.thinkStuckMs
           && ![...s.subagents.values()].some(a => a.ended == null)) {
@@ -607,11 +637,12 @@ export class Galaxy {
         c = true;
       }
       // 可能已关闭（变暗）。等你授权不在此列：对话框还开着就仍然需要你
-      if (!s.stale && s.status !== WAITING && quiet > this.limits.staleMs) {
+      // 插件报过还开着（Alive）的，从那时算起
+      if (!s.stale && s.status !== WAITING && unheard > this.limits.staleMs) {
         s.stale = true;
         c = true;
       }
-      if (quiet > this.limits.removeMs) {
+      if (unheard > this.limits.removeMs) {
         this.removeSession(s.sid, t);
         changed = true;
         continue;

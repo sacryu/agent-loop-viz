@@ -27,7 +27,8 @@ describe("插件和 shared/ 的表一致", () => {
   });
   it("hooks.json 订阅的正是协议里的事件，全部用 node 加参数调用", () => {
     const h = JSON.parse(readFileSync(resolve(root, "plugin/hooks/hooks.json"), "utf8")).hooks;
-    expect(Object.keys(h).sort()).toEqual([...shared.EVENT_NAMES].sort());
+    // Alive 不是 Claude Code 的 hook：插件替别的会话报的（见 report.mjs 的 sweepEnded）
+    expect(Object.keys(h).sort()).toEqual(shared.EVENT_NAMES.filter(x => x !== "Alive").sort());
     for (const [ev, groups] of Object.entries<any>(h)) {
       const c = groups[0].hooks[0];
       expect(c).toMatchObject({ type: "command", command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/hooks/report.mjs"] });

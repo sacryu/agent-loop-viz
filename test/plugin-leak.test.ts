@@ -2,7 +2,7 @@
 // 档位 0 的输出里一个标记串都不能出现，并且必须通过 shared/ 的 schema 严格校验（不允许多余字段）。
 // 非本机的三个档位：明文里一个标记串都不能出现；用密钥解开附件后，出现的标记串和方案 6.2 的表完全对应。
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { aadOf, Level0Event, LocalEvent, RemoteEvent, slotsOf } from "@agent-loo
 import {
   buildEvent, createGroup, deriveKeys, galaxyCommand, galaxyId, galaxyUrl, movedFrom, noteStale, statusCommand, isLocal, labelFromPrompt, lastSentence, lastStatus, loadIdentity, modelFromTranscript, parseTarget,
   fingerprint, helloGroups, leaveOrRejoin, leftGroups, markLeft, nodeProblem, recordStatus, rememberTarget, reportProblem, resolveTarget, blockMessage, markMoved, usageFromTranscript,
-  PLUGIN_VERSION, scrubKeys, settings, shareLevel, toolObj, liveSessions, recentSessions, sweepEnded,
+  PLUGIN_VERSION, scrubKeys, settings, shareLevel, toolObj, liveSessions, liveRegistry, recentSessions, sweepEnded, seenSession, hash16, normDir,
 } from "../plugin/hooks/report.mjs";
 import { fixtures, m, MARKS } from "./fixtures.ts";
 
@@ -842,7 +842,7 @@ describe("上报不出去时告诉用户", () => {
    *  给了插件数据目录 data 就在它的 usage/ 里给每个会话记录留一份缓存（和记录同时动过） */
   const fakeClaude = (cfg: string, reg: Record<string, number>, transcripts: Record<string, number>, now = Date.now(), data?: string) => {
     mkdirSync(join(cfg, "sessions"), { recursive: true });
-    for (const [sid, pid] of Object.entries(reg)) writeFileSync(join(cfg, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId: sid, kind: "interactive" }));
+    for (const [sid, pid] of Object.entries(reg)) writeFileSync(join(cfg, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId: sid, cwd: join(cfg, "work", sid), kind: "interactive" }));
     mkdirSync(join(cfg, "projects", "C--work-demo"), { recursive: true });
     for (const [sid, ago] of Object.entries(transcripts)) {
       const f = join(cfg, "projects", "C--work-demo", `${sid}.jsonl`);
@@ -853,11 +853,11 @@ describe("上报不出去时告诉用户", () => {
   };
   const MIN = 60_000;
 
-  it("替结束了却没送出 SessionEnd 的会话补发：不在登记里、登记的进程没了的才算；刚动过、两小时以前的、自己都不算", async () => {
+  it("替结束了却没送出 SessionEnd 的会话补发：不在登记里、登记的进程没了的才算；刚动过、一天以前的、自己都不算", async () => {
     const cfg = tmp(), dir = tmp(), now = Date.now();
     const pids: Record<number, boolean> = { 101: true, 102: true, 103: false };
     fakeClaude(cfg, { self: 101, idle: 102, killed: 103 },
-      { self: 5 * MIN, idle: 40 * MIN, killed: 10 * MIN, exited: 20 * MIN, fresh: 10_000, old: 3 * 3600_000 }, now, dir);
+      { self: 5 * MIN, idle: 40 * MIN, killed: 10 * MIN, exited: 20 * MIN, fresh: 10_000, old: 25 * 3600_000 }, now, dir);
     const sent: string[] = [];
     const sweep = (t: number, self = "self") => sweepEnded({ dir, cfg, self, now: t, isAlive: p => !!pids[p], end: async sid => { sent.push(sid); } });
     // killed：窗口点 × 关了（登记还在，进程没了）；exited：正常退出（登记删了）但 SessionEnd 没送到
@@ -872,13 +872,13 @@ describe("上报不出去时告诉用户", () => {
     expect(await sweep(now + 6 * MIN)).toEqual(["exited"]);
   });
 
-  it("补发的候选只从 usage 缓存来：缓存两小时没动过、读不懂、记录没了、编号不合法的都不算", () => {
+  it("补发的候选只从 usage 缓存来：缓存一天没动过、读不懂、记录没了、编号不合法的都不算", () => {
     // 取整秒：下面要按值比较修改时间，utimesSync 收的是浮点秒数，Linux 存纳秒，毫秒的零头读回来会差一点（…122.999）
     const cfg = tmp(), dir = tmp(), now = Math.floor(Date.now() / 1000) * 1000;
     fakeClaude(cfg, {}, { a: 10 * MIN, b: 20 * MIN, noCache: 10 * MIN }, now);
     const rec = (sid: string) => join(cfg, "projects", "C--work-demo", `${sid}.jsonl`);
     usageCache(dir, "ha", rec("a"), now - 10 * MIN);
-    usageCache(dir, "hb", rec("b"), now - 3 * 3600_000);   // 缓存两小时以前就没动过：不看（记录本身是 20 分钟前）
+    usageCache(dir, "hb", rec("b"), now - 25 * 3600_000);   // 缓存一天以前就没动过：不看（记录本身是 20 分钟前）
     usageCache(dir, "ha2", rec("a"), now - 5 * MIN);       // 同一个会话两份缓存（换过盐）：只算一次
     usageCache(dir, "gone", rec("gone"), now - 5 * MIN);   // 记录不存在
     usageCache(dir, "nopath", undefined, now - 5 * MIN);
@@ -950,10 +950,12 @@ describe("上报不出去时告诉用户", () => {
     expect(hits.map(h => h.ev.ev)).toEqual(["UserPromptSubmit"]);
     code = 204;
     await run([], env, say);
-    // 工具调用之类的不扫
+    // 回答完也扫，可离上次不到一分钟：不扫
     await run([], env, JSON.stringify({ hook_event_name: "Stop", session_id: "me" }));
+    // 工具调用之类的不扫
+    await run([], env, JSON.stringify({ hook_event_name: "PreToolUse", session_id: "me", tool_name: "Read", tool_use_id: "t1" }));
     srv.close();
-    expect(hits.map(h => h.ev.ev)).toEqual(["UserPromptSubmit", "UserPromptSubmit", "SessionEnd", "Stop"]);
+    expect(hits.map(h => h.ev.ev)).toEqual(["UserPromptSubmit", "UserPromptSubmit", "SessionEnd", "Stop", "PreToolUse"]);
     const end = hits[2];
     expect(end.group).toBe(deriveKeys(K)!.access);
     expect(RemoteEvent.safeParse(end.ev).success).toBe(true);
@@ -961,6 +963,82 @@ describe("上报不出去时告诉用户", () => {
     const { salt } = loadIdentity(d);
     expect(end.ev.sid).toBe(buildEvent({ hook_event_name: "SessionEnd", session_id: "gone" }, { salt, level: 0 })!.sid);
     expect(end.ev.sid).not.toBe(hits[1].ev.sid);
+  });
+
+  it("替开着却闲着的会话报还开着（Alive）：记录 20 分钟没动过才报，报过隔 20 分钟再报；没报过的、没有目录的不报；报过的没了就补发 SessionEnd", async () => {
+    const cfg = tmp(), dir = tmp(), now = Date.now();
+    const pids: Record<number, boolean> = { 101: true, 102: true, 103: true, 104: true, 105: true };
+    fakeClaude(cfg, { self: 101, idle: 102, busy: 103, unknown: 104, nocwd: 105 }, { self: MIN, idle: 40 * MIN, busy: 5 * MIN, unknown: 40 * MIN, nocwd: 40 * MIN }, now);
+    writeFileSync(join(cfg, "sessions", "105.json"), JSON.stringify({ pid: 105, sessionId: "nocwd" }));
+    const rec = (sid: string) => join(cfg, "projects", "C--work-demo", `${sid}.jsonl`);
+    const seen = (sid: string) => sid === "unknown" ? null : { path: rec(sid), mtime: statSync(rec(sid)).mtimeMs };
+    const told: { sid: string; cwd: string; path: string }[] = [], ended: string[] = [];
+    const sweep = (t: number) => sweepEnded({ dir, cfg, self: "self", now: t, isAlive: p => !!pids[p], seen,
+      end: async sid => { ended.push(sid); }, alive: async x => { told.push(x); } });
+    await sweep(now);
+    expect(told).toEqual([{ sid: "idle", cwd: join(cfg, "work", "idle"), path: rec("idle") }]);
+    await sweep(now + 2 * MIN);
+    expect(told.map(x => x.sid)).toEqual(["idle"]);   // 刚报过
+    await sweep(now + 21 * MIN);
+    expect(told.map(x => x.sid)).toEqual(["idle", "idle", "busy"]);   // busy 的记录这时也 26 分钟没动了
+    // idle 的窗口点 × 关了；它的记录早就过了一天的窗口，可替它报过还开着，服务器上它还在：补发 SessionEnd，只补一次
+    pids[102] = false;
+    setMtime(rec("idle"), now - 30 * 3600_000);
+    expect(await sweep(now + 45 * MIN)).toEqual(["idle"]);
+    expect(await sweep(now + 47 * MIN)).toEqual([]);
+    expect(ended).toEqual(["idle"]);
+    expect(told.map(x => x.sid)).toEqual(["idle", "idle", "busy", "busy"]);
+    // 没给 alive、seen（旧的调用方式）：只补发 SessionEnd
+    const d2 = tmp(), sent: string[] = [];
+    expect(await sweepEnded({ dir: d2, cfg, self: "self", now, isAlive: () => true, end: async sid => { sent.push(sid); } })).toEqual([]);
+    expect(liveRegistry(cfg, () => true)?.get("nocwd")).toBe("");
+  });
+
+  it("seenSession：只认插件自己写的 usage 缓存（文件名是加盐哈希后的编号），记录要对得上编号", () => {
+    const dir = tmp(), cfg = tmp(), salt = "s".repeat(64), now = Date.now();
+    fakeClaude(cfg, {}, { a: 30 * MIN, b: 30 * MIN }, now);
+    const rec = (sid: string) => join(cfg, "projects", "C--work-demo", `${sid}.jsonl`);
+    usageCache(dir, hash16(salt, "a"), rec("a"), now);
+    usageCache(dir, hash16(salt, "b"), rec("a"), now);   // 缓存里记的不是它自己的记录
+    usageCache(dir, hash16(salt, "c"), rec("c"), now);   // 记录没了
+    expect(seenSession(dir, salt, "a")?.path).toBe(rec("a"));
+    expect(Math.abs(seenSession(dir, salt, "a")!.mtime - (now - 30 * MIN))).toBeLessThan(1000);
+    expect(seenSession(dir, salt, "b")).toBeNull();
+    expect(seenSession(dir, salt, "c")).toBeNull();
+    expect(seenSession(dir, "t".repeat(64), "a")).toBeNull();   // 换过盐
+  });
+
+  it("hook：说话时替同一台机器上闲着的会话报 Alive，带它自己的项目、名片、标题、token 数；结果不记；旧服务器回 400 也不当回事", async () => {
+    const hits: { group?: string; ev: any }[] = [];
+    const srv = createServer((req, res) => {
+      let b = ""; req.on("data", x => (b += x));
+      req.on("end", () => { const ev = b ? JSON.parse(b) : null; hits.push({ group: req.headers["x-group"] as string | undefined, ev }); res.writeHead(ev?.ev === "Alive" ? 400 : 204).end(); });
+    });
+    await new Promise<void>(r => srv.listen(0, "127.0.0.2", r));
+    const url = `http://127.0.0.2:${(srv.address() as any).port}`;
+    const cfg = tmp(), d = tmp(), now = Date.now();
+    // 两个会话都登记成活着的进程（测试进程和它的父进程）
+    fakeClaude(cfg, { me: process.pid, idle: process.ppid }, { me: MIN, idle: 40 * MIN }, now);
+    const f = join(cfg, "projects", "C--work-demo", "idle.jsonl");
+    writeFileSync(f, [
+      JSON.stringify({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 10, output_tokens: 3 } } }),
+      JSON.stringify({ type: "ai-title", aiTitle: "Fix the parser", sessionId: "idle" }),
+    ].join(String.fromCharCode(10)) + String.fromCharCode(10));
+    setMtime(f, now - 40 * MIN);
+    const { salt } = loadIdentity(d);
+    usageCache(d, hash16(salt, "idle"), f, now - 40 * MIN);
+    const env = { CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_DATA: d, CLAUDE_PLUGIN_OPTION_SERVER_URL: `${url}/#k=${K}`, CLAUDE_PROJECT_DIR: join(cfg, "work", "me") };
+    await run([], env, JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: "me", prompt: "hi" }));
+    srv.close();
+    expect(hits.map(h => h.ev.ev)).toEqual(["UserPromptSubmit", "Alive"]);
+    const a = hits[1].ev;
+    expect(hits[1].group).toBe(deriveKeys(K)!.access);
+    expect(RemoteEvent.safeParse(a).success).toBe(true);
+    expect(a.sid).toBe(hash16(salt, "idle"));
+    expect(a.proj).toBe(hash16(salt, normDir(join(cfg, "work", "idle"))));   // 那个会话自己的项目
+    expect(a.proj).not.toBe(hits[0].ev.proj);
+    expect([a.model, a.ctx_tok, a.out_tok, typeof a.enc_card, typeof a.enc_title]).toEqual(["claude-opus-5-5", 10, 3, "string", "string"]);
+    expect(lastStatus(d)).toEqual({ url, status: 204 });   // Alive 的 400 不记
   });
 
   it("命令正文里的 ${CLAUDE_PLUGIN_DATA} 没被替换：用 hook 的同一个数据目录", async () => {

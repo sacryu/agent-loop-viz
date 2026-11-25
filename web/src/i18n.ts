@@ -136,7 +136,7 @@ const zh = {
   // /agent-loop:leave 退出以后打开的页面（#left=）
   leftTitle: (fp: string) => `已退出星系群 ${fp}`,
   leftDesc: "你的星系已经从这个群里移走，服务器上存着的完整步骤也删了。这台电脑上的会话不再往这个群上报。",
-  leftKept: "服务器没收到退出的通知：你的星系还会在群里留一阵（30 分钟后显示为可能已关闭，大约 2 小时内消失）。服务器连得上时再运行一次 /agent-loop:leave，就会马上移走。这台电脑上的会话已经不再往这个群上报。",
+  leftKept: "服务器没收到退出的通知：你的星系还会在群里留一阵（30 分钟后显示为可能已关闭，大约一天内消失）。服务器连得上时再运行一次 /agent-loop:leave，就会马上移走。这台电脑上的会话已经不再往这个群上报。",
   leftOther: (fp: string) => `这个浏览器看的是另一个星系群（${fp}），没有动它。`,
   leftBack: "这个浏览器已经清掉了这个群的密钥，看不到它了。想回这个群，在 Claude Code 里运行：",
   leftLocal: "想在本机看自己的星系：用 /plugin configure agent-loop@agent-loop 把 server_url 改回 http://127.0.0.1:4317。",
@@ -264,7 +264,7 @@ const en: Strings = {
   leaveGo: "Clear", leaveStay: "Cancel",
   leftTitle: (fp: string) => `Left galaxy group ${fp}`,
   leftDesc: "Your galaxy has been removed from this group, together with the full step details stored on the server. Sessions on your computer no longer report to it.",
-  leftKept: "The server was not told that you left: your galaxy stays in the group for a while (shown as possibly closed after 30 minutes, gone within about 2 hours). Run /agent-loop:leave again once the server is reachable to remove it right away. Sessions on your computer no longer report to this group.",
+  leftKept: "The server was not told that you left: your galaxy stays in the group for a while (shown as possibly closed after 30 minutes, gone within about a day). Run /agent-loop:leave again once the server is reachable to remove it right away. Sessions on your computer no longer report to this group.",
   leftOther: (fp: string) => `This browser is watching a different galaxy group (${fp}); that one is left alone.`,
   leftBack: "This browser has cleared the group's key and can no longer see it. To rejoin this group, run in Claude Code:",
   leftLocal: "To see your galaxy on your own computer instead, set server_url back to http://127.0.0.1:4317 with /plugin configure agent-loop@agent-loop.",

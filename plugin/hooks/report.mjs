@@ -14,7 +14,8 @@
 //   - 用 /agent-loop:leave 退出过的星系群也什么都不发（记在插件数据目录的 left.json 里，/agent-loop:rejoin 去掉）。
 //   - 用接入命令换了群以后，还拿着旧设置的会话也不发（moved.json，/reload-plugins 以后就是新设置了）。
 //   - 附件里出现的邀请密钥（k=…）一律抹掉，不会跟着别的内容发出去。
-//   - 替已经结束、却没把 SessionEnd 送到的会话补发一条 SessionEnd（只有加盐哈希后的会话编号，见 sweepEnded）。
+//   - 替已经结束、却没把 SessionEnd 送到的会话补发一条 SessionEnd（只有加盐哈希后的会话编号，见 sweepEnded）；
+//     替开着却闲着的会话报一条 Alive（和它自己说话时带的名片、标题、圈数、token 数一样，见 sweepEnded）。
 //
 // 这个文件不能依赖任何包，也不能从仓库其他目录导入（插件装到你机器上时只有 plugin/ 这一个目录）。
 // 任何失败都吞掉：不往标准输出写任何东西，退出码永远是 0。需要 Node 18 以上（自带 fetch）。
@@ -79,6 +80,8 @@ export const EVENT_NAMES = [
   "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
   "PostToolBatch", "PermissionRequest", "PermissionDenied", "Notification", "Stop", "StopFailure",
   "SubagentStart", "SubagentStop", "PreCompact", "PostCompact",
+  // 不是 Claude Code 的 hook：替开着、却安静了很久的别的会话报一声「还开着」（见 sweepEnded）
+  "Alive",
 ];
 export const SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 export const NOTIFICATION_TYPES = [
@@ -611,9 +614,9 @@ export function buildEvent(hook, ctx) {
   if (name === "PostToolUseFailure" && hook.is_interrupt === true) out.interrupt = true;
   if (name === "SessionStart" && SESSION_SOURCES.includes(hook.source)) out.source = hook.source;
   // 会话记录里的 token 数、圈数、步数、模型名、标题：只看主对话
-  const u = (name === "SessionStart" || name === "Stop" || name === "PostToolBatch" || name === "UserPromptSubmit") && !out.agent && ctx.readUsage
+  const u = (name === "SessionStart" || name === "Stop" || name === "PostToolBatch" || name === "UserPromptSubmit" || name === "Alive") && !out.agent && ctx.readUsage
     ? ctx.readUsage(hook.transcript_path, out.sid) : undefined;
-  if (name === "SessionStart" || name === "Stop") {
+  if (name === "SessionStart" || name === "Stop" || name === "Alive") {
     // 模型名：hook 数据给了就用；没给先用上面读到的；还没有（子 agent 的事件、主对话还没回答过）再读记录末尾
     if (isModel(hook.model)) out.model = hook.model;
     else if (u && isModel(u.model)) out.model = u.model;
@@ -626,7 +629,7 @@ export function buildEvent(hook, ctx) {
     if (name !== "UserPromptSubmit") { if (u.ctx) out.ctx_tok = u.ctx; if (u.out) out.out_tok = u.out; }
     // 记录里已有的圈数、步数：也只是两个数。每圈结束时不带（那时记录里有正在跑的这一圈，服务器只在没有圈在跑时用它）
     if (name !== "PostToolBatch") { if (u.laps) out.laps = u.laps; if (u.steps) out.steps = u.steps; }
-    // 标题：会话开始、每次提问、每次回答完都带上（服务器重启过也能补回来）；每一圈结束时只在它变了的时候带
+    // 标题：会话开始、每次提问、每次回答完、报还开着时都带上（服务器重启过也能补回来）；每一圈结束时只在它变了的时候带
     if (u.title && (name !== "PostToolBatch" || u.titleNew)) title = u.title;
   }
   if (name === "Notification" && NOTIFICATION_TYPES.includes(hook.notification_type)) out.ntype = hook.notification_type;
@@ -658,9 +661,9 @@ export function buildEvent(hook, ctx) {
       if (small && slots.small) out.enc = seal(ctx.key, small, aadOf(slots.small.slot, slots.small.sid, slots.small.k));
       if (full !== undefined && slots.full) out.enc_full = seal(ctx.key, full, aadOf(slots.full.slot, slots.full.sid, slots.full.k));
     }
-    // 每次提问补发名片（和 SessionStart 的小附件同一个槽、同样的内容）：会话开始那条事件没送到时
+    // 每次提问、报还开着时补发名片（和 SessionStart 的小附件同一个槽、同样的内容）：会话开始那条事件没送到时
     // （服务器重启过、会话中途才设好插件），项目名和星系名靠它补上。子 agent 的事件不带
-    if (name === "UserPromptSubmit" && !out.agent) {
+    if ((name === "UserPromptSubmit" || name === "Alive") && !out.agent) {
       const card = smallDetail(hook, "SessionStart", dctx);
       if (card && ctx.local) out.card = card;
       else if (card && ctx.key) out.enc_card = seal(ctx.key, card, aadOf("card", ctx.gid ?? "", out.proj));
@@ -864,7 +867,7 @@ export async function leaveOrRejoin(what, dir, value, open = null) {
   markLeft(dir, keys.group, true);
   const status = await sendLeave(target.url, loadIdentity(dir).secret, keys.access);
   const server = status === 204 ? "Your galaxy was removed from the group on the server, together with the full step details stored there."
-    : `The server could not be told (${status === "unreachable" ? "unreachable" : `HTTP ${status}`}); your galaxy stays visible in the group until its sessions time out on the server (shown as possibly closed after 30 minutes, gone within about 2 hours). Run /agent-loop:leave again once the server is reachable to remove it right away.`;
+    : `The server could not be told (${status === "unreachable" ? "unreachable" : `HTTP ${status}`}); your galaxy stays visible in the group until its sessions time out on the server (shown as possibly closed after 30 minutes, gone within about a day). Run /agent-loop:leave again once the server is reachable to remove it right away.`;
   let page = 'Browsers that opened the invite link can still watch the group until they choose "Clear cache" under Invite on the page.';
   if (open && status !== "unreachable") {
     const v = serverVersion(await serverHealth(target.url));
@@ -975,7 +978,7 @@ export function blockMessage(block, target) {
 /**
  * 旧设置的会话结束了：把 SessionEnd 发给现在的目标（server.json 记着的）。
  * 跑 /agent-loop:create 或接入命令的会话已经作为 SessionStart 报进了新群，可它自己拿着旧设置、之后什么都不发；
- * 没有这条 SessionEnd，新群里这颗行星要等两小时才移除（半小时后才变暗），看着像多了一个会话。
+ * 没有这条 SessionEnd，新群里这颗行星要等一天才移除（半小时后才变暗），看着像多了一个会话。
  * 没报进新群的旧会话：服务器上没有这个会话，SessionEnd 直接忽略
  * @param {string} dir @param {any} hook @param {string} share @param {string} me
  */
@@ -989,19 +992,26 @@ async function endInCurrent(dir, hook, share, me) {
   if (ev) await r.send(ev, SESSION_END_TIMEOUT_MS);
 }
 
-// ---- 替结束了却没送出 SessionEnd 的会话补发（sweep.json）
+// ---- 替别的会话说一声：结束了却没送出 SessionEnd 的、开着却很久没动静的（sweep.json）
 //
-// SessionEnd 送不到的会话（点 × 关了窗口、进程崩了、发送超时、旧版插件把它拦下了、服务器升级后不收旧格式）在群里要挂两个
-// 小时才被服务器移除，看着像多了一个会话。那个会话自己已经不在了，只能由还活着的会话（跑着新插件）替它发，服务器新旧都认。
-// Claude Code 在 <配置目录>/sessions/<进程号>.json 里登记正在跑的会话（交互的和 claude -p 都有，正常退出时删掉）：
-// 不在登记里、或者登记的进程已经没了的，就是结束了。候选是插件报过（usage/ 缓存里有）、最近两小时（服务器移除会话的时间）动过的会话记录。
+// 插件只在 hook 触发时跑，会话闲着就什么都不发，服务器分不清「开着在闲」和「关了」：半小时没消息变暗，一天没消息移除。
+// 所以同一台机器上有会话在动的时候，顺便看一眼别的会话，替它们说一声：
+//   - 结束了：SessionEnd 送不到的会话（点 × 关了窗口、进程崩了、发送超时、旧版插件把它拦下了、服务器升级后不收旧格式）
+//     在群里要挂一天才被服务器移除，看着像多了一个会话。替它补发 SessionEnd，服务器新旧都认。
+//   - 还开着、可会话记录已经 ALIVE_QUIET_MS 没动过（闲着）：替它报一条 Alive，服务器从这时起重新算变暗、移除；
+//     服务器重启过、上面没有这个会话的话，靠这条（带着名片、标题、圈数）把它补回来。旧的服务器不认 Alive，回 400，不管它。
+// Claude Code 在 <配置目录>/sessions/<进程号>.json 里登记正在跑的会话（交互的和 claude -p 都有，正常退出时删掉；里面有项目目录）：
+// 不在登记里、或者登记的进程已经没了的，就是结束了。结束的候选是插件报过（usage/ 缓存里有）、最近一天（服务器移除会话的时间）
+// 动过的会话记录，加上替它报过还开着的；还开着的候选是登记里、插件报过的会话。
 // 登记是 Claude Code 内部的文件，所以很保守：登记里找不到自己这个会话（这个版本不登记、换了格式）、有登记读不懂，就不扫；
 // 记录刚动过不到一分钟的不算（可能刚开、还没登记）。宁可不清，不能把开着的会话从页面上拿掉
 
 /** Claude Code 的会话编号（会话记录的文件名） */
 const SID_RE = /^[A-Za-z0-9-]{1,80}$/;
 
-const SWEEP_EVERY_MS = 60_000, SWEEP_QUIET_MS = 60_000, SWEEP_WINDOW_MS = 2 * 3600_000, SWEEP_MAX = 30;
+const SWEEP_EVERY_MS = 60_000, SWEEP_QUIET_MS = 60_000, SWEEP_WINDOW_MS = 24 * 3600_000, SWEEP_MAX = 30;
+/** 会话记录这么久没动过（自己没有动静）才替它报还开着；报过以后隔这么久再报。都比服务器变暗的 30 分钟短 */
+const ALIVE_QUIET_MS = 20 * 60_000, ALIVE_EVERY_MS = 20 * 60_000;
 
 /** 进程还在不在。没权限看（EPERM）也是在 @param {number} pid */
 function alive(pid) {
@@ -1009,26 +1019,34 @@ function alive(pid) {
 }
 
 /**
- * Claude Code 登记着、进程还在的会话编号。没有登记目录、有一个读不懂：返回 null（不知道，别扫）
- * @param {string} cfg @param {(pid: number) => boolean} [isAlive] @returns {Set<string> | null}
+ * Claude Code 登记着、进程还在的会话：编号 → 项目目录（登记里的 cwd，没有就是空字符串）。
+ * 没有登记目录、有一个读不懂：返回 null（不知道，别扫）
+ * @param {string} cfg @param {(pid: number) => boolean} [isAlive] @returns {Map<string, string> | null}
  */
-export function liveSessions(cfg, isAlive = alive) {
+export function liveRegistry(cfg, isAlive = alive) {
   /** @type {string[]} */
   let names;
   try { names = readdirSync(join(cfg, "sessions")); } catch { return null; }
-  const live = new Set();
+  /** @type {Map<string, string>} */
+  const live = new Map();
   for (const f of names) {
     if (!/^\d+\.json$/.test(f)) continue;
     try {
       const o = JSON.parse(readFileSync(join(cfg, "sessions", f), "utf8"));
       if (typeof o.sessionId !== "string" || !Number.isInteger(o.pid) || o.pid <= 0) return null;
-      if (isAlive(o.pid)) live.add(o.sessionId);
+      if (isAlive(o.pid)) live.set(o.sessionId, str(o.cwd) ? o.cwd : "");
     } catch (e) {
       if (/** @type {any} */ (e)?.code === "ENOENT") continue;   // 读的时候刚好退出、删掉了
       return null;   // 正在写、格式变了：这次不扫
     }
   }
   return live;
+}
+
+/** 同 liveRegistry，只要编号 @param {string} cfg @param {(pid: number) => boolean} [isAlive] @returns {Set<string> | null} */
+export function liveSessions(cfg, isAlive = alive) {
+  const live = liveRegistry(cfg, isAlive);
+  return live && new Set(live.keys());
 }
 
 /**
@@ -1063,39 +1081,79 @@ export function recentSessions(dir, now) {
   return out;
 }
 
-/** 上次扫的时间；补发过的会话 → 补发时它的记录最后动的时间（之后又 --resume 过、又动了，就再补一次）
- *  @param {string} dir @returns {{ at: number, done: Record<string, number> }} */
+/** @typedef {{ at: number, done: Record<string, number>, alive: Record<string, number> }} SweepState */
+
+/** 上次扫的时间；补发过的会话 → 补发时它的记录最后动的时间（之后又 --resume 过、又动了，就再补一次）；
+ *  替它报过还开着的会话 → 上次报的时间
+ *  @param {string} dir @returns {SweepState} */
 function readSweep(dir) {
   const o = readJson(dir, "sweep.json");
-  return { at: typeof o?.at === "number" ? o.at : 0, done: o && typeof o.done === "object" && o.done ? o.done : {} };
+  const map = (/** @type {unknown} */ v) => v && typeof v === "object" ? /** @type {Record<string, number>} */ (v) : {};
+  return { at: typeof o?.at === "number" ? o.at : 0, done: map(o?.done), alive: map(o?.alive) };
 }
 
-/** @param {string} dir @param {{ at: number, done: Record<string, number> }} s */
+/** @param {string} dir @param {SweepState} s */
 function writeSweep(dir, s) {
   try { writeJson(dir, "sweep.json", s); } catch { /* 写不了：下次再扫一遍，服务器对没有的会话的 SessionEnd 什么都不做 */ }
 }
 
 /**
- * 找出结束了的会话，给 send 补发 SessionEnd（每个只发一次）。返回补发了哪些会话编号
+ * 找出结束了的会话，给 end 补发 SessionEnd（每个只发一次）；找出开着却闲着的会话，给 alive 报还开着
+ * （每 ALIVE_EVERY_MS 最多一次；没给 alive、seen 就不报）。返回补发了 SessionEnd 的会话编号
  * @param {object} o
  * @param {string} o.dir 插件数据目录 @param {string} o.cfg Claude Code 的配置目录 @param {string} o.self 跑这个 hook 的会话
  * @param {(sid: string) => Promise<unknown>} o.end 发一条 SessionEnd
+ * @param {(x: { sid: string, cwd: string, path: string }) => Promise<unknown>} [o.alive] 发一条 Alive（cwd：登记里的项目目录；path：会话记录）
+ * @param {(sid: string) => { path: string, mtime: number } | null} [o.seen] 插件报过的会话：会话记录在哪、最后动的时间。没报过是 null
  * @param {number} [o.now] @param {(pid: number) => boolean} [o.isAlive]
  * @returns {Promise<string[]>}
  */
-export async function sweepEnded({ dir, cfg, self, end, now = Date.now(), isAlive = alive }) {
+export async function sweepEnded({ dir, cfg, self, end, alive: sendAlive, seen, now = Date.now(), isAlive = alive }) {
   const state = readSweep(dir);
   if (now - state.at < SWEEP_EVERY_MS) return [];
-  const live = liveSessions(cfg, isAlive);
+  const live = liveRegistry(cfg, isAlive);
   if (!live || !live.has(self)) return [];
   for (const [sid, t] of Object.entries(state.done)) if (typeof t !== "number" || now - t > SWEEP_WINDOW_MS) delete state.done[sid];
-  const gone = recentSessions(dir, now)
-    .filter(x => x.sid !== self && !live.has(x.sid) && !(state.done[x.sid] >= x.mtime)).slice(0, SWEEP_MAX);
+  const gone = recentSessions(dir, now).filter(x => x.sid !== self && !live.has(x.sid) && !(state.done[x.sid] >= x.mtime));
+  // 替它报过还开着、现在没了的：服务器上它一直在，会话记录却可能早就过了上面那一天的窗口，也要补发
+  for (const [sid, t] of Object.entries(state.alive)) {
+    if (live.has(sid) && typeof t === "number") continue;
+    delete state.alive[sid];
+    if (typeof t === "number" && SID_RE.test(sid) && sid !== self && !gone.some(x => x.sid === sid) && !(state.done[sid] >= t)) gone.push({ sid, mtime: t });
+  }
+  gone.splice(SWEEP_MAX);
   for (const x of gone) state.done[x.sid] = x.mtime;
+  /** @type {{ sid: string, cwd: string, path: string }[]} */
+  const quiet = [];
+  if (sendAlive && seen) {
+    for (const [sid, cwd] of live) {
+      if (quiet.length >= SWEEP_MAX) break;
+      if (sid === self || !cwd || !SID_RE.test(sid) || now - (state.alive[sid] ?? 0) < ALIVE_EVERY_MS) continue;
+      const r = seen(sid);   // 插件没报过的：服务器上本来就没有，也不该替它开个头
+      if (r && now - r.mtime >= ALIVE_QUIET_MS) quiet.push({ sid, cwd, path: r.path });
+    }
+    for (const x of quiet) state.alive[x.sid] = now;
+  }
   state.at = now;
   writeSweep(dir, state);   // 先记下：同时跑的 hook 不再发一遍
-  await Promise.all(gone.map(x => end(x.sid).catch(() => {})));
+  await Promise.all([
+    ...gone.map(x => end(x.sid).catch(() => {})),
+    ...quiet.map(x => /** @type {NonNullable<typeof sendAlive>} */ (sendAlive)(x).catch(() => {})),
+  ]);
   return gone.map(x => x.sid);
+}
+
+/**
+ * 插件报过的会话：会话记录在哪、最后动的时间（给 sweepEnded 的 seen）。看 usage/ 缓存：文件名是加盐哈希后的会话编号，
+ * 里面记着会话记录的路径。没有缓存（插件没报过、换过盐）、读不懂、记录没了：null
+ * @param {string} dir @param {string} salt @param {string} sid
+ */
+export function seenSession(dir, salt, sid) {
+  try {
+    const path = JSON.parse(readFileSync(join(dir, "usage", `${hash16(salt, sid)}.json`), "utf8"))?.path;
+    if (!str(path) || basename(path) !== `${sid}.jsonl`) return null;
+    return { path, mtime: statSync(path).mtimeMs };
+  } catch { return null; }
 }
 
 // ---- 上报不出去时告诉用户
@@ -1792,14 +1850,23 @@ async function main() {
   let status;
   try { status = await r.send(ev, SEND_TIMEOUT_MS); } catch { status = "unreachable"; }
   recordStatus(dir, target.url, status);
-  // 会话开始、说话时（都是异步的 hook，不耽误用户）：替结束了却没送出 SessionEnd 的会话补发。服务器收下了才扫
-  if (status === 204 && !ev.agent && (ev.ev === "SessionStart" || ev.ev === "UserPromptSubmit")) {
+  // 会话开始、说话、回答完时（都是异步的 hook，不耽误用户）：替结束了却没送出 SessionEnd 的会话补发、
+  // 替开着却闲着的会话报还开着（一分钟最多扫一次）。服务器收下了才扫。这些发送的结果不记：旧的服务器不认 Alive
+  if (status === 204 && !ev.agent && (ev.ev === "SessionStart" || ev.ev === "UserPromptSubmit" || ev.ev === "Stop")) {
+    const { salt } = loadIdentity(dir);
     await sweepEnded({
       dir, cfg: configDir(), self: String(hook.session_id),
       end: sid => {
         const gone = r.build({ hook_event_name: "SessionEnd", session_id: sid, reason: "other", cwd: hook.cwd });
         return gone ? r.send(gone, SEND_TIMEOUT_MS) : Promise.resolve();
       },
+      // 项目是那个会话自己的（登记里的目录），不是跑这个 hook 的会话的
+      alive: ({ sid, cwd, path }) => {
+        const ra = reporter(dir, t, { share, me, projectDir: cwd });
+        const x = ra.build({ hook_event_name: "Alive", session_id: sid, cwd, transcript_path: path });
+        return x ? ra.send(x, SEND_TIMEOUT_MS) : Promise.resolve();
+      },
+      seen: sid => seenSession(dir, salt, sid),
     });
   }
 }

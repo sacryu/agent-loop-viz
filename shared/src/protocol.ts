@@ -11,6 +11,10 @@ export const EVENT_NAMES = [
   "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
   "PostToolBatch", "PermissionRequest", "PermissionDenied", "Notification", "Stop", "StopFailure",
   "SubagentStart", "SubagentStop", "PreCompact", "PostCompact",
+  // 不是 Claude Code 的 hook：同一台机器上别的会话有动静时，插件替开着、却安静了很久的会话报一声「还开着」
+  // （见 report.mjs 的 sweep）。服务器靠它不把闲着的会话标成可能已关闭、不移除；服务器重启过的话靠它把会话补回来。
+  // 旧的服务器不认它，回 400：插件不当回事，也不记进上报的结果
+  "Alive",
 ] as const;
 export type EventName = (typeof EVENT_NAMES)[number];
 

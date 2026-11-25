@@ -406,12 +406,64 @@ describe("会话的来去（TestSlots）", () => {
     expect([v.status, v.phase, v.stale, v.laps]).toEqual(["working", "think", false, 1]);
   });
 
-  it("两小时没有事件就移除；星系空了记下时间", () => {
+  it("一天没有事件就移除（之前一直是可能已关闭）；星系空了记下时间", () => {
     const h = new Harness();
     h.ev("SessionStart", { source: "startup" });
     h.tick(2 * 3600_000 + 1000);
+    expect(h.view()).toMatchObject({ stale: true });
+    h.tick(22 * 3600_000);
     expect(h.view()).toBeNull();
     expect(h.g.emptySince).not.toBeNull();
+  });
+
+  it("插件报过还开着（Alive）：从那时算起才变暗、才移除；状态、圈、最后的动静都不变", () => {
+    const h = new Harness();
+    h.ev("UserPromptSubmit", { prompt: "p" });
+    h.ev("Stop", { prompt: "p", bg: 0 });
+    const last = h.view()!.last_event;
+    h.tick(25 * 60_000);
+    h.ev("Alive");
+    h.tick(25 * 60_000);
+    let v = h.view()!;
+    expect([v.status, v.stale, v.laps, v.last_event]).toEqual(["done", false, 1, last]);
+    h.tick(10 * 60_000);
+    expect(h.view()!.stale).toBe(true);   // 报过以后又 35 分钟没消息：不知道还在不在
+    h.ev("Alive");
+    expect(h.view()!.stale).toBe(false);
+    for (let i = 0; i < 30; i++) { h.tick(25 * 60_000); h.ev("Alive"); }   // 一直报着：十几个小时也不移除
+    v = h.view()!;
+    expect([v.status, v.stale, v.last_event]).toEqual(["done", false, last]);
+    h.tick(24 * 3600_000 + 1000);
+    expect(h.view()).toBeNull();
+  });
+
+  it("Alive 不打断在等你、在干活", () => {
+    const h = new Harness();
+    h.ev("UserPromptSubmit", { prompt: "p" });
+    h.ev("PermissionRequest", { kind: "shell", tool: "t1" });
+    h.ev("Alive");
+    expect(h.view()!.status).toBe("waiting");
+    h.ev("PreToolUse", { kind: "shell", tool: "t1" });
+    h.ev("Alive");
+    expect(h.view()).toMatchObject({ status: "working", phase: "act", running: 1 });
+  });
+
+  it("服务器上没有的会话收到 Alive：按待命新建，带的名片、标题、圈数步数、模型、token 数补上；刚结束的不复活", () => {
+    const h = new Harness();
+    h.ev("Alive", { sid: "s1", card: { me: "M", proj: "repo" }, title: { label: "T" }, laps: 7, steps: 20, model: "opus", ctx_tok: 100, out_tok: 5 });
+    const v = h.view()!;
+    expect([v.status, v.stale, v.laps, v.steps_total, v.model, v.ctx_tok, v.out_tok, v.title?.x]).toEqual(["idle", false, 7, 20, "opus", 100, 5, { label: "T" }]);
+    expect(h.g.projects.get("p1")!.card?.x).toEqual({ me: "M", proj: "repo" });
+    expect(h.g.card?.x).toEqual({ me: "M", proj: "repo" });
+    h.ev("SessionEnd", { sid: "s2" });
+    h.ev("SessionStart", { sid: "s2" });
+    h.ev("SessionEnd", { sid: "s2" });
+    h.advance(1000);
+    h.ev("Alive", { sid: "s2" });
+    expect(h.view("s2")).toBeNull();
+    h.advance(60_000);
+    h.ev("Alive", { sid: "s2" });
+    expect(h.view("s2")).toMatchObject({ status: "idle" });
   });
 
   it("在想却两分钟没有任何事件（拿不到 Esc 打断）：回到待命；有工具或后台任务在跑时不动", () => {
