@@ -45,7 +45,7 @@ const zh = {
   subagents: (k: number) => `${k} 个子 agent`,
   moreSubagents: (k: number) => `还有 ${k} 个子 agent`,
 
-  /** 一步的短句：真实工具名 + 对象（来自附件）。照搬 Python 版 humanize.py 的 tool_phrase */
+  /** 一步的短句：真实工具名 + 对象（来自附件） */
   tool: {
     shell: (o: string) => `运行 ${o}`, read: (o: string) => `读 ${o}`, edit: (o: string) => `改 ${o}`, write: (o: string) => `写 ${o}`,
     grep: (o: string) => `搜 ${o}`, glob: (o: string) => `找文件 ${o}`, fetch: (o: string) => `打开 ${o}`, search: (o: string) => `搜网页 ${o}`,

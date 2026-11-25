@@ -1,5 +1,5 @@
 // 工具归类表。plugin/hooks/report.mjs 里抄了一份（它不能从这里导入），由 test/plugin-sync.test.ts 保证两份一致。
-// 依据是 Python 版 agentloop/humanize.py 的工具分组。MCP 工具一律记成 mcp：名字里可能带公司内部系统名。
+// MCP 工具一律记成 mcp：名字里可能带公司内部系统名。
 
 export const TOOL_KINDS = ["read", "edit", "search", "shell", "web", "agent", "ask", "plan", "progress", "mcp", "other"] as const;
 export type ToolKind = (typeof TOOL_KINDS)[number];

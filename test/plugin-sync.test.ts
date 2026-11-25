@@ -81,7 +81,7 @@ describe("插件和 shared/ 的表一致", () => {
     expect(shared.pluginOutdated("0.10.0", "0.2.1")).toBe(false);
     expect(shared.pluginOutdated("1.0.0", "0.2.1")).toBe(false);
   });
-  it("错误归类（照搬 Python 版）", () => {
+  it("错误归类", () => {
     expect(report.errorKind("overloaded_error")).toBe("server");
     expect(report.errorKind({ type: "authentication_error" })).toBe("auth");
     expect(report.errorKind("authentication_failed")).toBe("auth");

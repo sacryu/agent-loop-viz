@@ -234,7 +234,7 @@ export function layout(S: Ring) {
 
 export const KIND_DONE: Record<ToolKind, string> = T.kindDone;
 
-/** 真实工具名 + 对象 → 一句短句（照搬 Python 版 humanize.py 的 tool_phrase） */
+/** 真实工具名 + 对象 → 一句短句 */
 export function toolPhrase(name: string, obj: string): string {
   const t = T.tool;
   switch (name) {

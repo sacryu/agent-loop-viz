@@ -121,7 +121,7 @@ export function toolKind(name) {
 }
 
 /**
- * StopFailure 的 error（rate_limit、server_error、authentication_failed……）归类。照搬 Python 版的 error_kind。
+ * StopFailure 的 error（rate_limit、server_error、authentication_failed……）归类。
  * @param {unknown} err @returns {ErrKind}
  */
 export function errorKind(err) {
@@ -192,7 +192,7 @@ const bytes = (/** @type {unknown} */ v) => Buffer.byteLength(JSON.stringify(v) 
 
 // ---- 附件里的短字段：只负责挑字段和截断，不负责造句（句子由浏览器按看的人的语言拼）
 
-/** 东亚宽字符算 1，其余算 0.55（照搬 Python 版 humanize.py 的 char_width） @param {string} ch */
+/** 东亚宽字符算 1，其余算 0.55 @param {string} ch */
 const charW = ch => /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]|[\ud800-\udbff]/.test(ch) ? 1 : 0.55;
 /** @param {string} s */
 const textW = s => { let w = 0; for (const c of s) w += charW(c); return w; };
@@ -219,7 +219,7 @@ function isBreak(t, i) {
 }
 
 /**
- * 对话的标签：输入的第一句的开头，最多约 12 个汉字宽，在标点处截断。照搬 Python 版 humanize.py 的 label_from_prompt
+ * 对话的标签：输入的第一句的开头，最多约 12 个汉字宽，在标点处截断
  * @param {unknown} text @param {number} [width] @returns {string}
  */
 export function labelFromPrompt(text, width = 12) {
@@ -261,7 +261,7 @@ export function lastTwo(p) {
 }
 
 /**
- * 一步的对象（照搬 Python 版 tool_phrase 取的东西，不带动词）。其余工具（含 MCP）没有对象：真实工具名已经够了
+ * 一步的对象（文件、命令开头、搜索词……，不带动词）。其余工具（含 MCP）没有对象：真实工具名已经够了
  * @param {string} name @param {any} inp @returns {string}
  */
 export function toolObj(name, inp) {
@@ -320,7 +320,7 @@ export function smallDetail(hook, name, ctx) {
       const dir = str(ctx.projectDir) ? ctx.projectDir : str(hook.cwd) ? hook.cwd : "";
       return fitSmall({ me: clip(ctx.me, 40), proj: clip(lastTwo(dir).split("/").pop(), 80) });
     }
-    // 宽度比 Python 版的 12 宽一些：它在这里还要当对话的标题；画面上放不下时浏览器会再截
+    // 宽度比默认的 12 宽一些：它在这里还要当对话的标题；画面上放不下时浏览器会再截
     case "UserPromptSubmit": return ctx.taskNote ? null : fitSmall({ label: labelFromPrompt(hook.prompt, LABEL_WIDTH) });
     case "PreToolUse": case "PermissionRequest": {
       const tn = str(hook.tool_name) ? hook.tool_name.slice(0, 160) : "";

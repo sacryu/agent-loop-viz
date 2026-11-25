@@ -1,5 +1,4 @@
-// 状态机的验收测试：从 Python 版 tests/test_state.py 移植，凡是不涉及文字、会话记录、进程登记的用例都在这里。
-// 原来断言主句文字的地方，改成断言状态、阶段、等待的种类、支线这些不含文字的东西。
+// 状态机的验收测试。状态机不产出文字，所以断言的都是状态、阶段、等待的种类、支线这些不含文字的东西。
 import { describe, expect, it } from "vitest";
 import { Harness } from "./helpers.ts";
 

@@ -108,7 +108,7 @@ describe("地址、设置和档位", () => {
     expect(parseTarget(`https://loop.example.com/#k=${K}`)).toEqual({ url: "https://loop.example.com", k: K });
     expect(parseTarget(`https://loop.example.com/sub/#g=0123456789abcdef&k=${K}&mine`)).toEqual({ url: "https://loop.example.com/sub", k: K });
     expect(settings({ CLAUDE_PLUGIN_OPTION_SERVER_URL: `https://x.example/#k=${K}`, CLAUDE_PLUGIN_OPTION_SHARE: "full",
-      CLAUDE_PLUGIN_OPTION_NAME: "  Yu  " })).toEqual({ target: { url: "https://x.example", k: K }, share: "full", me: "Yu" });
+      CLAUDE_PLUGIN_OPTION_NAME: "  Ada  " })).toEqual({ target: { url: "https://x.example", k: K }, share: "full", me: "Ada" });
   });
   it("分享档位：没设或 auto 时本机完整、别处概要；认不出的值按概要", () => {
     expect(shareLevel("", true)).toBe(2);
@@ -155,7 +155,7 @@ describe("地址、设置和档位", () => {
   });
 });
 
-describe("附件的短字段（照搬 Python 版 humanize.py）", () => {
+describe("附件的短字段", () => {
   it("对话标签：第一句的开头，在标点处截断", () => {
     expect(labelFromPrompt("帮我修一下登录页的 bug，顺便看看样式")).toBe("帮我修一下登录页的 bug");
     expect(labelFromPrompt("1. 先跑测试，然后提交")).toBe("1. 先跑测试");

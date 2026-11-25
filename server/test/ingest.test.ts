@@ -163,7 +163,7 @@ describe("POST /v1/events", () => {
     await app!.close(); app = null;
     const { base, post, clock } = await start(true);
     const raw = { hook_event_name: "PreToolUse", tool_name: "Bash", cwd: "C:\\code\\myproj", tool_input: { command: "ls" } };
-    expect(await post({ ...good(), level: 2, detail: { proj: "myproj", me: "Yu" } })).toBe(204);
+    expect(await post({ ...good(), level: 2, detail: { proj: "myproj", me: "Ada" } })).toBe(204);
     expect(await post({ ...good({ ev: "UserPromptSubmit", ts: 1_900_000_000_050 }), source: undefined, level: 2, prompt: "5555555555555555",
       task_note: false, detail: { label: "fix the bug" }, detail_full: "fix the bug in app.ts please" })).toBe(204);
     expect(await post({ ...good({ ev: "PreToolUse", ts: 1_900_000_000_100 }), source: undefined, level: 2, kind: "shell",
@@ -176,8 +176,8 @@ describe("POST /v1/events", () => {
     expect((await fetch(base + "/debug")).status).toBe(200);
     expect(app!.universe.rawLog.map(x => (x.ev as any).raw?.tool_name)).toContain("Bash");
     const g = app!.universe.galaxy(GID)!.full();
-    expect(g.card).toEqual({ k: "2222222222222222", x: { proj: "myproj", me: "Yu" } });
-    expect(g.projects[0].card?.x).toEqual({ proj: "myproj", me: "Yu" });
+    expect(g.card).toEqual({ k: "2222222222222222", x: { proj: "myproj", me: "Ada" } });
+    expect(g.projects[0].card?.x).toEqual({ proj: "myproj", me: "Ada" });
     const s = g.sessions[0];
     // 标题是 Claude Code 起的（随 Stop 带来）；第一句话另外留着，还没有标题时页面拿它当标题
     expect(s).toMatchObject({ model: "claude-opus-5-5", title: { k: "", x: { label: "Fix app.ts bug" } },

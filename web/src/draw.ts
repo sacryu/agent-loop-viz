@@ -1,4 +1,4 @@
-// 星系视图里的画法：球（对话）、射线（步骤）、子 agent 小球、后台任务卫星、雾和尘埃。画法和动效与 Python 版的页面一致。
+// 星系视图里的画法：球（对话）、射线（步骤）、子 agent 小球、后台任务卫星、雾和尘埃。
 import { capsulePath, ctx, fit, V } from "./canvas.ts";
 import {
   M, RING_F, SUB_BACK_MS, SUB_BIRTH_MS, SUB_MAX, SWEEP_MS, bgOnly, subTypeOf, subsAlive, wordOf,
