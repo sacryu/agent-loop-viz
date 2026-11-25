@@ -11,7 +11,7 @@ import { CREATE_SINCE, KEY43_RE } from "@agent-loop/shared/browser";
 import { ATT, setKeys } from "./attach.ts";
 import { deriveKeys } from "./crypto.ts";
 import { T } from "./i18n.ts";
-import { MARKETPLACE } from "./links.ts";
+import { joinCommands } from "./links.ts";
 import { conn, setAccess } from "./net.ts";
 import { UPDATE_CMDS } from "./update.ts";
 import { el, setStyle } from "./util.ts";
@@ -163,26 +163,6 @@ function btn(text: string, f: () => void, cls = "pill"): HTMLElement {
   return b;
 }
 
-/** 插件市场加进来以后，插件的上报脚本在哪（Claude Code 把市场克隆到 <配置目录>/plugins/marketplaces/<市场名>）。
- *  $HOME 在 bash、zsh、PowerShell 里都认（Windows 的 Git Bash 会把 /c/Users/… 转成 node 认的路径）。
- *  设了 CLAUDE_CONFIG_DIR 的人配置目录不在这里：没有一种写法三种 shell 都认，所以由那段话让 Claude 换成它（i18n 的 joinPrompt） */
-export const WELCOME_SCRIPT = "$HOME/.claude/plugins/marketplaces/agent-loop/plugin/hooks/report.mjs";
-/**
- * 接入自己的星系：一段发给 Claude Code 的话，让它在终端按顺序跑这几行。
- *   1、2 加插件市场，并拉到最新（加过的市场再 add 一次不会更新，旧的脚本不认第 4 行）
- *   3 claude plugin install --config server_url=… 把链接存进安全存储（和 /plugin configure 一样）；插件已经装过时再跑一次
- *     也会把链接换掉，所以换群也是这一句。由 Claude Code 的 Bash 跑，不进交互 shell 的历史（实测）
- *   4 插件的 --welcome：不等 /reload-plugins，把正在跑的这个会话报上去、在浏览器里打开你的星系（&welcome），
- *     把会分享什么、怎么加密打印出来交给 Claude（report.mjs 的 welcome）
- */
-export function joinCommands(link: string): string[] {
-  return [
-    `claude plugin marketplace add ${MARKETPLACE}`,
-    "claude plugin marketplace update agent-loop",
-    `claude plugin install agent-loop@agent-loop --config "server_url=${link}"`,
-    `node "${WELCOME_SCRIPT}" --welcome "${link}"`,
-  ];
-}
 /**
  * 发给 Claude Code 的那段话：一句话加两行安装命令（文字在 i18n 的 joinPrompt）。
  * 会分享什么、怎么加密、要不要改 name 和 share，插件生效后由插件自己交给 Claude（report.mjs 的 helloContext）

@@ -336,6 +336,19 @@ describe("本机模式只认本机", () => {
     await until(() => ok.msgs.some(m => m.t === "sum"));
     ok.ws.close();
   });
+
+  it("解析不了的 WebSocket 升级请求：断开这一个连接，服务照常", async () => {
+    for (const local of [true, false]) {
+      const { base } = await start(local);
+      const net = await import("node:net");
+      const sock = net.connect(Number(new URL(base).port), "127.0.0.1");
+      sock.on("error", () => {});
+      sock.write(`GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+      await new Promise(r => sock.on("close", r));
+      expect((await fetch(base + "/healthz")).status).toBe(200);
+      await app!.close(); app = null;
+    }
+  });
 });
 
 describe("大附件的总量上限", () => {
@@ -444,6 +457,46 @@ describe("星系群的隔离", () => {
     await new Promise(r => setTimeout(r, 50));
     expect(b.msgs.some(m => m.t === "sum")).toBe(false);
     b.ws.close();
+  });
+
+  it("切换星系、要附件有速度上限，同一个 IP 的连接共用，超了的不理；同一个 IP 同时开着的连接有上限，断开后空出来", async () => {
+    const { base, post, clock } = await start(false);
+    await post(good());
+    clock.t += 1000; app!.tick();
+    const [a, a2] = [await wsOpen(base), await wsOpen(base)];
+    for (const x of [a, a2]) x.ws.send(JSON.stringify({ join: ACCESS }));
+    await until(() => a.msgs.some(m => m.t === "sum") && a2.msgs.some(m => m.t === "sum"));
+    const gals = (x: typeof a) => x.msgs.filter(m => m.t === "gal").length;
+    for (let i = 0; i < 200; i++) a.ws.send(JSON.stringify({ focus: GID }));
+    await until(() => gals(a) >= 60);
+    await new Promise(r => setTimeout(r, 100));
+    expect(gals(a)).toBeLessThan(70);
+    for (let i = 0; i < 50; i++) a2.ws.send(JSON.stringify({ focus: GID }));   // 换一个连接也没有新的额度
+    await new Promise(r => setTimeout(r, 100));
+    expect(gals(a2)).toBeLessThan(15);
+    for (const x of [a, a2]) x.ws.close();
+    await until(() => a.closed() !== null && a2.closed() !== null);
+    // 全断开再马上重连（中间清理过一次）也拿不回满额度
+    await new Promise(r => setTimeout(r, 30));
+    app!.tick("watchdog");
+    const a3 = await wsOpen(base);
+    a3.ws.send(JSON.stringify({ join: ACCESS }));
+    await until(() => a3.msgs.some(m => m.t === "sum"));
+    for (let i = 0; i < 50; i++) a3.ws.send(JSON.stringify({ focus: GID }));
+    await new Promise(r => setTimeout(r, 100));
+    expect(gals(a3)).toBeLessThan(20);
+    a3.ws.close();
+    await until(() => a3.closed() !== null);
+    await new Promise(r => setTimeout(r, 30));
+
+    const socks = await Promise.all(Array.from({ length: 64 }, () => wsOpen(base)));
+    const extra = new WebSocket(base.replace("http", "ws") + "/ws");
+    expect(await new Promise<boolean>(res => { extra.on("open", () => res(true)); extra.on("error", () => res(false)); })).toBe(false);
+    socks[0].ws.close();
+    await until(() => socks[0].closed() !== null);
+    await new Promise(r => setTimeout(r, 30));
+    const again = await wsOpen(base);
+    for (const s of [...socks, again]) s.ws.close();
   });
 
   it("换到的星系群满了：留在原来的群里，不会两边都没有", async () => {

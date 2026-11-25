@@ -17,7 +17,7 @@
 //   STATIC_DIR         前端构建产物的目录，默认 web/dist
 // 命令行：
 //   --record <文件>    本机模式下把收到的事件一行一条写下来（经过重排、交给状态机之前的那一刻），做测试数据用
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, openSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ID_HEX, ID_RE } from "@agent-loop/shared";
@@ -61,7 +61,11 @@ const app = createApp({
 });
 
 if (recordTo) {
-  const out = createWriteStream(recordTo, { flags: "a" });
+  // 先同步打开：路径不对（比如目录不存在）在启动时就说清楚，而不是等第一条事件来了让进程崩掉
+  let fd: number;
+  try { fd = openSync(recordTo, "a"); } catch (e) { console.error(`没法写 ${recordTo}：${(e as Error).message}`); process.exit(1); }
+  const out = createWriteStream("", { fd });
+  out.on("error", e => { console.error(`写 ${recordTo} 出错，不再记录：${e.message}`); app.universe.onEvent = undefined; });
   app.universe.onEvent = (group, galaxy, ev, t) => {
     const { raw: _raw, ...rest } = ev;
     out.write(JSON.stringify({ t, galaxy, ev: rest }) + "\n");

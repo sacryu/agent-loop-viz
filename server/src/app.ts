@@ -17,7 +17,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import { ID_RE, KEY43_RE, LocalEvent, PLUGIN_HEADER, PLUGIN_VERSION, RemoteEvent, SECRET_RE, VERSION_RE, type ClientMsg, type Event, type ServerMsg } from "@agent-loop/shared";
 import { DEBUG_HTML } from "./debug-page.ts";
-import { LOCAL_GROUP, Universe, type UniverseOptions } from "./universe.ts";
+import { LOCAL_GROUP, Universe, rateKey, type UniverseOptions } from "./universe.ts";
 
 export interface AppOptions {
   /** 本机模式：一个隐含的星系群、明文附件、调试页 */
@@ -36,6 +36,14 @@ const MIME: Record<string, string> = {
 };
 
 const SUMMARY_MS = 1000, DETAIL_MS = 100, FLUSH_MS = 50, WATCHDOG_MS = 500;
+/** 一个浏览器还没收走的数据超过这么多就断开它：读得太慢（或故意不读）的连接，别让服务器替它攒内存。
+ *  这个分支没有自动测试：在回环地址上要先塞满内核的 socket 缓冲区才会积压到这里，测试又慢又不稳 */
+const WS_MAX_BUFFERED = 8 * 1024 * 1024;
+/** 非本机模式下，同一个地址（IPv6 按 /64）同时开着的 WebSocket 上限，包括还没发 join 的 */
+const WS_PER_IP = 64;
+/** 发 focus / full 的速度：突发 60 条，之后每秒 20 条；超了的直接不理。非本机模式下同一个地址的所有连接共用这一份
+ *  （每条 focus 都要把整个星系拼一遍，开一堆连接不该换来更多次数） */
+const WS_MSG_BURST = 60, WS_MSG_PER_SEC = 20;
 
 export interface App {
   server: Server;
@@ -53,13 +61,27 @@ export function createApp(opt: AppOptions): App {
 
   // ---------------------------------------------------------------- 浏览器
   // group：这个浏览器加入的星系群（本机模式下一连上就是那个隐含的群；否则发了 join 才有）
-  interface Client { ws: WebSocket; group: string | null; focus: string | null; alive: boolean; goneSent: boolean }
+  interface Client { ws: WebSocket; group: string | null; focus: string | null; alive: boolean; goneSent: boolean; bucket: Bucket }
+  interface Bucket { tokens: number; at: number }
   const clients = new Set<Client>();
   /** 星系群编号 → 看着它的浏览器。只有有人看的群在里面 */
   const watchers = new Map<string, Set<Client>>();
-  const send = (c: Client, m: ServerMsg | string) => { if (c.ws.readyState === WebSocket.OPEN) c.ws.send(typeof m === "string" ? m : JSON.stringify(m)); };
+  /** 每个地址开着几个 WebSocket、共用的发消息额度（只在非本机模式下算；连接都断了就删掉） */
+  const wsPerIp = new Map<string, number>();
+  const bucketOfIp = new Map<string, Bucket>();
+  /** 积压太多：断开它，返回 true */
+  const choked = (c: Client) => {
+    if (c.ws.bufferedAmount <= WS_MAX_BUFFERED) return false;
+    c.ws.terminate();
+    return true;
+  };
+  const send = (c: Client, m: ServerMsg | string) => {
+    if (c.ws.readyState !== WebSocket.OPEN || choked(c)) return;
+    c.ws.send(typeof m === "string" ? m : JSON.stringify(m));
+  };
 
   function sendFull(c: Client) {
+    if (c.ws.readyState !== WebSocket.OPEN || choked(c)) return;   // 先看积压，再拼整个星系
     const g = c.focus && universe.groupOf(c.focus) === c.group ? universe.galaxy(c.focus) : undefined;
     c.goneSent = false;
     if (c.focus && g) send(c, { t: "gal", now: now(), id: g.id, full: true, galaxy: g.full() });
@@ -266,9 +288,23 @@ export function createApp(opt: AppOptions): App {
   // ---------------------------------------------------------------- WebSocket
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
   server.on("upgrade", (req, sock, head) => {
-    if (new URL(req.url || "/", "http://x").pathname !== "/ws" || !trusted(req)) { sock.destroy(); return; }
+    // 这里抛出去的异常没人接，会让整个进程退出：解析不了的请求行（比如 "GET http://[ HTTP/1.1"）只断开这一个连接
+    let path = "";
+    try { path = new URL(req.url || "/", "http://x").pathname; } catch { /* 当作不是 /ws */ }
+    if (path !== "/ws" || !trusted(req)) { sock.destroy(); return; }
+    const ip = local ? "" : rateKey(clientIp(req));
+    if (ip && (wsPerIp.get(ip) ?? 0) >= WS_PER_IP) { sock.destroy(); return; }
+    if (ip) {   // 从握手开始算，到这条 TCP 连接断开为止
+      wsPerIp.set(ip, (wsPerIp.get(ip) ?? 0) + 1);
+      sock.once("close", () => {
+        const n = (wsPerIp.get(ip) ?? 1) - 1;
+        if (n > 0) wsPerIp.set(ip, n); else wsPerIp.delete(ip);   // 额度留着：断开重连不能换来满额度（sweepBuckets 再删）
+      });
+    }
     wss.handleUpgrade(req, sock, head, ws => {
-      const c: Client = { ws, group: null, focus: null, alive: true, goneSent: false };
+      let bucket = ip ? bucketOfIp.get(ip) : undefined;
+      if (!bucket) { bucket = { tokens: WS_MSG_BURST, at: Date.now() }; if (ip) bucketOfIp.set(ip, bucket); }
+      const c: Client = { ws, group: null, focus: null, alive: true, goneSent: false, bucket };
       clients.add(c);
       send(c, { t: "hello", now: now(), local, open: !local && !universe.opt.groups });
       if (local) joinGroup(c, LOCAL_GROUP);
@@ -289,6 +325,11 @@ export function createApp(opt: AppOptions): App {
           return;
         }
         if (!c.group) { ws.close(4401, "join"); return; }
+        const b = c.bucket, tNow = Date.now();
+        b.tokens = Math.min(WS_MSG_BURST, b.tokens + (tNow - b.at) * WS_MSG_PER_SEC / 1000);
+        b.at = tNow;
+        if (b.tokens < 1) return;
+        b.tokens -= 1;
         if ("focus" in m) {
           const f = m.focus;
           if (f !== null && (typeof f !== "string" || !ID_RE.test(f))) return;
@@ -312,16 +353,23 @@ export function createApp(opt: AppOptions): App {
   });
 
   // ---------------------------------------------------------------- 定时器
+  /** 删掉没有连接、额度也已经补满的地址：这时删掉和留着没有区别（补满只要 WS_MSG_BURST / WS_MSG_PER_SEC 秒） */
+  function sweepBuckets() {
+    const t = Date.now();
+    for (const [ip, b] of bucketOfIp)
+      if (!wsPerIp.has(ip) && b.tokens + (t - b.at) * WS_MSG_PER_SEC / 1000 >= WS_MSG_BURST) bucketOfIp.delete(ip);
+  }
+
   const tick = (what: "flush" | "watchdog" | "push" | "all" = "all") => {
     const t = now();
     if (what === "flush" || what === "all") universe.flush(t);
-    if (what === "watchdog" || what === "all") universe.watchdog(t);
+    if (what === "watchdog" || what === "all") { universe.watchdog(t); sweepBuckets(); }
     if (what === "push" || what === "all") { pushDetail(); pushSummary(); }
   };
   const timers: NodeJS.Timeout[] = [];
   if (!opt.manualTimers) {
     timers.push(setInterval(() => universe.flush(now()), FLUSH_MS));
-    timers.push(setInterval(() => universe.watchdog(now()), WATCHDOG_MS));
+    timers.push(setInterval(() => { universe.watchdog(now()); sweepBuckets(); }, WATCHDOG_MS));
     timers.push(setInterval(pushDetail, DETAIL_MS));
     timers.push(setInterval(pushSummary, SUMMARY_MS));
     timers.push(setInterval(() => {   // 断掉的连接清掉

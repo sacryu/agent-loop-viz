@@ -41,7 +41,7 @@ curl https://loop.example.com/healthz  # {"ok":true,"local":false,"open":false,"
 | `TRUST_PROXY` | 0（`deploy/compose.yml` 里是 1） | 用 `X-Forwarded-For` 的第一个地址限流。只在反向代理后面这样设：直接对外开端口时这个头谁都能伪造，按 IP 的限流就形同虚设 |
 | `STATIC_DIR` | `web/dist` | 页面文件 |
 
-其余限制写在代码里：每个安装每秒 50 条事件、突发 200 条，每个星系最多 50 个会话，每个会话留最近 600 步，请求体 64 KB（本机 256 KB），每个星系的大附件最多 8 MB。
+其余限制写在代码里：每个安装每秒 50 条事件、突发 200 条，每个星系最多 50 个会话，每个会话留最近 600 步，请求体 64 KB（本机 256 KB），每个星系的大附件最多 8 MB；非本机模式下每个 IP 同时最多 64 个 WebSocket，同一个 IP 的所有连接合起来每秒 20 次切换星系或要附件（突发 60），积压 8 MB 没收走的浏览器会被断开。
 
 本机模式可以加 `--record <文件>`：把收到的事件一行一条写下来（经过重排、交给状态机之前），做测试数据用。
 
@@ -58,9 +58,7 @@ curl https://loop.example.com/healthz  # {"ok":true,"local":false,"open":false,"
 `cli/` 就是发布到 npm 的包（`npx agent-loop-viz`）：
 
 ```sh
-npm run build
-node tools/pack-cli.mjs          # 把 server.mjs 和页面放进 cli/dist
-cd cli && npm pack --dry-run     # 看看包里有什么
+cd cli && npm pack --dry-run     # 看看包里有什么（prepack 会先 npm run build，再把 server.mjs 和页面放进 cli/dist）
 npm publish                      # 发布（要先 npm login）
 ```
 
